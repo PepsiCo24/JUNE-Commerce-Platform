@@ -1,0 +1,33 @@
+{
+  "name": "@june/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1131.0",
+    "@aws-sdk/s3-request-presigner": "3.1131.0",
+    "@june/db": "workspace:*",
+    "@june/providers": "workspace:*",
+    "@june/shared": "workspace:*",
+    "bullmq": "5.81.5",
+    "dotenv": "17.2.4",
+    "ioredis": "5.11.1",
+    "papaparse": "5.7.0",
+    "sharp": "0.35.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "@types/papaparse": "5.5.2",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3",
+    "vitest": "5.0.0"
+  }
+}

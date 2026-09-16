@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    // generated/ 与 src/ 同级,rootDir 设为包根以保留目录结构和相对导入
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node"],
+    // Prisma 生成代码体量大且自带 @ts-nocheck,跳过其严格检查
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "generated/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

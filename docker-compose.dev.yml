@@ -1,0 +1,174 @@
+# ============================================================================
+# 本地开发依赖栈:只有 postgres + redis + minio
+# ----------------------------------------------------------------------------
+# 应用(api / web / worker)仍然在宿主机上用 `pnpm dev` 跑,这样热重载最快;
+# 这个文件只负责把三个有状态依赖拉起来,端口都绑回环地址。
+#
+# 用法:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml logs -f
+#   docker compose -f docker-compose.dev.yml down          # 保留数据
+#   docker compose -f docker-compose.dev.yml down -v       # 连数据一起删
+#
+# 与 .env 的关系:端口从 .env 读(变量名与 .env.example 完全一致),
+# 默认值即 .env.example 的默认值,所以直接 `cp .env.example .env` 就能跑。
+# 对象存储用 MinIO 模拟 S3;生产环境请用云对象存储,不要用这套。
+# ============================================================================
+
+name: june-dev
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17.7-alpine
+    restart: unless-stopped
+    ports:
+      # 只绑回环:开发机也不要把数据库暴露到局域网
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-june}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-june}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: UTC
+    shm_size: 128mb
+    command:
+      - postgres
+      # 开发机参数明显小于生产:开发库数据量小,别抢开发机内存
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - max_connections=50
+      - -c
+      - random_page_cost=1.1
+      # 与生产保持一致地开启慢查询统计,这样本地就能用同一套优化流程
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - log_min_duration_statement=300
+      # migrate dev 需要影子库:允许创建数据库(默认已允许,这里只是提醒)
+      # SHADOW_DATABASE_URL 可填 postgresql://june:...@localhost:5432/june_shadow
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    environment:
+      # 开发环境 .env 里 REDIS_PASSWORD 默认为空;为空时不启用 requirepass,
+      # 这样 ioredis 不配密码也能连上。生产环境必须设置(见 docker-compose.yml)。
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server \
+          $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"} \
+          --appendonly yes \
+          --appendfsync everysec \
+          --maxmemory 512mb \
+          --maxmemory-policy noeviction \
+          --loglevel notice
+    volumes:
+      - redisdata-dev:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli --no-auth-warning $${REDIS_PASSWORD:+-a "$$REDIS_PASSWORD"} ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+  # =========================================================================
+  # MinIO:本地 S3 兼容对象存储
+  # 控制台 http://127.0.0.1:9001,S3 端点 http://127.0.0.1:9000
+  # .env 对应:S3_ENDPOINT / S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY /
+  #            S3_FORCE_PATH_STYLE=true(MinIO 必须 path-style)
+  # =========================================================================
+  minio:
+    # 开发工具,不做版本锁定;需要复现问题时再 pin 具体 RELEASE 标签
+    image: minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      # 与 .env 的 S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY 保持一致,
+      # 否则直传签名会 403。默认值是 MinIO 的开发默认,仅限本地。
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+      # 浏览器直传(PUT 到对象存储)必须允许前端来源跨域,
+      # 否则 /api/assets/upload-ticket 拿到的签名 URL 用不了。
+      # 生产环境的 CORS 规则见 docs/DEPLOYMENT.md(给出完整 JSON)。
+      MINIO_API_CORS_ALLOW_ORIGIN: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      MINIO_BROWSER_REDIRECT_URL: http://127.0.0.1:9001
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata-dev:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc --version >/dev/null 2>&1 || curl -fsS http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging: *default-logging
+
+  # 一次性初始化:建桶 + 公共读前缀。跑完即退出(restart: "no")。
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_started
+    environment:
+      S3_BUCKET: ${S3_BUCKET:-june-media}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -eu
+        echo "[minio-init] 等待 MinIO 就绪..."
+        for i in $$(seq 1 30); do
+          if mc alias set local http://minio:9000 "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY" >/dev/null 2>&1; then
+            break
+          fi
+          sleep 2
+        done
+        mc alias set local http://minio:9000 "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY"
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+        # 开启版本控制:本地也保持与生产一致的误删可恢复能力
+        # (生产策略见 docs/BACKUP_RECOVERY.md「对象存储版本控制」)
+        mc version enable "local/$$S3_BUCKET" || echo "[minio-init] 该 MinIO 版本不支持 versioning,跳过"
+        # 公开帖子图放在 public/ 前缀下,允许匿名读;其余前缀保持私有走签名 URL
+        mc anonymous set download "local/$$S3_BUCKET/public" || true
+        echo "[minio-init] 完成:桶 $$S3_BUCKET 已就绪"
+    logging: *default-logging
+
+volumes:
+  pgdata-dev:
+  redisdata-dev:
+  miniodata-dev:
+
+networks:
+  default:
+    name: june-dev-net

@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    // Worker 是纯 Node 进程(不使用 NestJS),因此不需要装饰器与元数据选项
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,18 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# 需要执行安装脚本的原生依赖白名单(pnpm 默认阻止依赖的 postinstall)
+allowBuilds:
+  '@prisma/engines': true
+  '@tailwindcss/oxide': true
+  esbuild: true
+  # BullMQ 的可选加速依赖,缺失时回退到纯 JS 实现
+  msgpackr-extract: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
+
+# 供应链策略:拒绝刚发布不久的版本。本项目锁定的都是发布超过 24 小时的稳定版;
+# 新增依赖若遇 ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION,请选用更早的补丁版本并复核来源。
+minimumReleaseAge: 1440

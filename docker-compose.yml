@@ -1,0 +1,519 @@
+# ============================================================================
+# JUNE-Commerce-Platform 生产编排(单机 Docker Compose)
+# ----------------------------------------------------------------------------
+# 目标机型:Linux / 4 核 / 8GB / 100GB SSD,图片走云对象存储(S3 兼容)。
+# 单机部署,**不提供多机高可用**:发布、迁移、恢复都需要维护窗口,
+# 详见 docs/DEPLOYMENT.md「维护窗口」。
+#
+# 约定:
+#  - 所有应用环境变量来自仓库根 `.env`(唯一权威模板是 `.env.example`),
+#    本文件**不硬编码任何密钥**,只做服务发现相关的地址改写(host → 容器名)。
+#  - `${VAR:?...}` 表示缺失即拒绝启动,把配置错误挡在启动前。
+#  - 镜像由 deploy/scripts/build-images.sh 在开发机或 CI 构建后推送/导入;
+#    本文件**故意不写 build:**,防止在 4 核 8G 生产机上误触发构建(易 OOM)。
+#
+# 常用命令:
+#   docker compose up -d                                  # 启动全栈
+#   docker compose --profile migrate run --rm migrate      # 查看迁移状态
+#   docker compose --profile migrate run --rm migrate pnpm db:migrate:deploy
+#   docker compose --profile loadtest up -d mock-provider  # 压测模拟供应商
+# ============================================================================
+
+name: june
+
+# ---------------------------------------------------------------------------
+# 日志轮转:单机磁盘只有 100GB,任何一个服务刷日志都不能把盘写满。
+# 每服务上限 20MB × 5 个文件 = 100MB,6 个服务合计最多约 600MB。
+# ---------------------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+# Node 服务公共配置
+x-node-common: &node-common
+  restart: unless-stopped
+  init: true # PID 1 负责回收僵尸进程并正确转发 SIGTERM(优雅退出依赖它)
+  env_file:
+    - .env
+  security_opt:
+    - no-new-privileges:true
+  logging: *default-logging
+
+# 容器内部服务发现地址:.env 里的 DATABASE_URL / REDIS_URL 是给宿主机工具
+# (prisma studio、psql)用的 localhost 版本,容器里必须指向服务名。
+# 这里只引用变量,不含任何明文密钥。
+# 注意:POSTGRES_PASSWORD / REDIS_PASSWORD 请只使用 URL 安全字符
+# (A-Za-z0-9 与 -._~),否则需要自行做百分号编码。
+x-db-urls: &db-urls
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER 未设置}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB 未设置}?schema=public
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD 未设置}@redis:6379
+
+services:
+  # =========================================================================
+  # PostgreSQL 17 —— 权威业务数据
+  # =========================================================================
+  postgres:
+    image: postgres:17.7-alpine
+    restart: unless-stopped
+    # 不发布端口:数据库只在 compose 内网可达。
+    # 需要本机排查时临时打开下面一行(只绑回环,绝不绑 0.0.0.0):
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER 未设置}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未设置}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB 未设置}
+      # 数据页校验和:能在早期发现存储层静默损坏,代价是个位数百分比的 CPU。
+      # 只在 initdb 时生效,已初始化的卷改这里无效。
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      # 容器内时区统一 UTC,时间字段本身是 timestamptz
+      TZ: UTC
+    # 共享内存段。parallel query 的中间结果放在 /dev/shm,Docker 默认只给 64MB,
+    # 8GB 机器上并行扫描很容易报 "could not resize shared memory segment"。
+    shm_size: 256mb
+    command:
+      - postgres
+      # ---- 内存 ----
+      # shared_buffers=1GB:约为整机 8GB 的 1/8(官方经验值 25% 是针对专用库机;
+      # 本机还要跑 api/worker/web/nginx,容器上限 2G,取 1GB 留出连接与维护内存)
+      - -c
+      - shared_buffers=1GB
+      # effective_cache_size=3GB:**只是规划器提示,不分配内存**。
+      # 依据 = shared_buffers 1GB + 预期可用页缓存约 2GB(8GB 减去各容器上限后的余量)
+      - -c
+      - effective_cache_size=3GB
+      # work_mem=16MB:单个排序/哈希节点的上限,一条查询可能用掉多份。
+      # 依据 = 目标并发约 20 条活跃查询 × 平均 2 个节点 × 16MB ≈ 640MB 峰值,
+      # 在 2G 容器上限内。帖子/商品列表都是索引 + limit 20,实际很少触顶。
+      - -c
+      - work_mem=16MB
+      # maintenance_work_mem=256MB:VACUUM / CREATE INDEX / 恢复期重建索引用,
+      # 同时最多 autovacuum_max_workers 份,故与 autovacuum 工作进程数配套看
+      - -c
+      - maintenance_work_mem=256MB
+      # ---- 连接 ----
+      # max_connections=100:预算 = API 池 20(API_DB_POOL_MAX)+ Worker 池 10
+      # (WORKER_DB_POOL_MAX)+ migrate/admin 一次性作业 5 + 备份与人工 psql 10
+      # + superuser_reserved 3,合计约 48,留一倍余量应对发布期新旧容器重叠。
+      # 每连接约 5~10MB,100 连接最坏约 1GB —— 这也是不能再往上调的原因。
+      - -c
+      - max_connections=100
+      # ---- 存储介质 ----
+      # random_page_cost=1.1:SSD 随机读与顺序读差距很小,默认 4.0 会让规划器
+      # 过度偏向顺序扫描,导致本该走索引的分页查询变成全表扫
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      # ---- WAL / 检查点 ----
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - min_wal_size=256MB
+      # 检查点摊平到 90% 的间隔内,避免周期性 IO 尖刺打到接口延迟
+      - -c
+      - checkpoint_completion_target=0.9
+      # ---- 并行度(4 核,留 CPU 给 api/worker)----
+      - -c
+      - max_worker_processes=4
+      - -c
+      - max_parallel_workers=2
+      - -c
+      - max_parallel_workers_per_gather=1
+      # ---- 慢查询定位(docs/LOAD_TEST.md 的优化流程依赖它)----
+      # pg_stat_statements 需要预加载;扩展本身由 bootstrap.sh 执行 CREATE EXTENSION
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - pg_stat_statements.track=top
+      # 超过 300ms 的语句进日志,与 .env 的 SLOW_QUERY_THRESHOLD_MS 对齐
+      - -c
+      - log_min_duration_statement=300
+      - -c
+      - log_lock_waits=on
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_temp_files=0
+      - -c
+      - log_line_prefix=%m [%p] %u@%d app=%a
+      # 语句/事务兜底超时:应用侧已配 statement_timeout,这里防止漏配的连接挂死
+      - -c
+      - idle_in_transaction_session_timeout=60000
+      # ---- autovacuum(2 万商品 + 1 万帖子 + 大量点赞更新)----
+      - -c
+      - autovacuum_max_workers=2
+      - -c
+      - autovacuum_vacuum_scale_factor=0.05
+      - -c
+      - autovacuum_analyze_scale_factor=0.02
+      - -c
+      - track_io_timing=on
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready 是官方推荐的就绪判定,-U/-d 用容器内环境变量,避免密码进命令行
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -h 127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    stop_grace_period: 60s # 等 checkpoint 写完,别让数据库被 SIGKILL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # 初值按"shared_buffers 1GB + 100 连接私有内存 + maintenance"估算;
+          # 压测后按 docs/LOAD_TEST.md 的实测 RSS 回调(见资源限制表)
+          memory: 2G
+          cpus: "1.5"
+
+  # =========================================================================
+  # Redis 7 —— BullMQ 队列(db0)+ 缓存(db1)+ SSE Pub/Sub
+  # =========================================================================
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # 同样不发布端口,只在 compose 内网可达
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD 未设置,生产环境必须设置 Redis 密码}
+    # 用 sh -c 而非直接 command,是为了从环境变量读密码 —— 密码不会出现在
+    # compose 文件里,也不会出现在 `docker inspect` 的 Cmd 之外的地方。
+    # $$ 是 compose 的转义:交给容器内 shell 展开,而不是 compose 自己插值。
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server \
+          --requirepass "$$REDIS_PASSWORD" \
+          --appendonly yes \
+          --appendfsync everysec \
+          --appendfilename "appendonly.aof" \
+          --auto-aof-rewrite-percentage 100 \
+          --auto-aof-rewrite-min-size 64mb \
+          --save 900 1 \
+          --save 300 10 \
+          --save 60 10000 \
+          --rdbcompression yes \
+          --rdbchecksum yes \
+          --stop-writes-on-bgsave-error yes \
+          --maxmemory 1gb \
+          --maxmemory-policy noeviction \
+          --timeout 0 \
+          --tcp-keepalive 60 \
+          --loglevel notice
+    # ---- 持久化与淘汰策略的依据 ----
+    # 1. appendonly yes + everysec:BullMQ 的任务就是业务承诺("我已收下这单生图")。
+    #    Redis 重启丢队列 = 用户任务凭空消失,所以必须开 AOF;everysec 在崩溃时
+    #    最多丢 1 秒写入,是吞吐与持久性的平衡点(alwaysfsync 会明显拖慢入队)。
+    # 2. RDB(save 三档)作为兜底:AOF 损坏时还能用 RDB 回到最近一个快照。
+    # 3. maxmemory-policy noeviction:**队列数据绝对不能被淘汰**。
+    #    allkeys-lru 会在内存压力下悄悄删掉 BullMQ 的 job hash,
+    #    表现是"任务卡在 waiting 永远不被消费",极难排查。
+    #    代价:内存打满时写入直接报 OOM 错误 —— 这是我们想要的显式失败。
+    # 4. 因为不靠 Redis 淘汰,**缓存的 TTL 与容量上限必须在应用层控制**:
+    #    API 侧所有缓存写入都要带 TTL(见 docs/PERFORMANCE.md 缓存键表),
+    #    缓存放 db1、队列放 db0(REDIS_CACHE_DB / REDIS_QUEUE_DB),
+    #    需要清缓存时只 FLUSHDB db1,不会波及队列。
+    # 5. maxmemory 1gb:队列峰值按 QUEUE_MAX_DEPTH_IMAGE=500 + TEXT=1000
+    #    估算不足 50MB;余量留给缓存与 SSE Pub/Sub 缓冲。
+    #    监控 used_memory / maxmemory 比例(monitor.sh 已采集),超过 70% 要报警。
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    stop_grace_period: 30s # 留时间做最后一次 AOF fsync
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # maxmemory 1gb + AOF 重写期的临时副本开销,给 1.2G
+          memory: 1.2G
+          cpus: "0.5"
+
+  # =========================================================================
+  # API(NestJS)
+  # -------------------------------------------------------------------------
+  # 为什么只有 1 个副本(而不是 2 个):
+  #  - 整机 4 核。Nginx 前置负载已经不是瓶颈,瓶颈在 PostgreSQL 与 Worker。
+  #  - 1 个 api(1.2 cpu)+ 1 个 worker(1.2 cpu)+ postgres(1.5 cpu)
+  #    + nginx/web(0.9 cpu)已经把 4 核排满,再加副本只会互相抢 CPU、
+  #    并把数据库连接数翻倍。
+  #  - 50 人同时在线的目标下,单进程 Node 处理 JSON 业务接口余量充足
+  #    (耗时任务全部异步化到 worker,见 docs/CONVENTIONS.md 第 8 节)。
+  #  - 真要横向扩容:SSE 已经通过 Redis Pub/Sub 汇聚、会话在数据库,
+  #    加副本本身可行,但要先把迁移从发布流程里拆开(本文件已按 job 方式拆好)。
+  # =========================================================================
+  api:
+    <<: *node-common
+    image: ${JUNE_IMAGE_PREFIX:-june}/api:${JUNE_IMAGE_TAG:-latest}
+    environment:
+      <<: *db-urls
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # 不发布端口:只有 nginx 需要访问它
+    expose:
+      - "3001"
+    healthcheck:
+      # 就绪探针:同时验证 DB 与 Redis 可达,发布脚本据此判断能否切流量
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3001)+'/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 8s
+      retries: 4
+      start_period: 45s
+    stop_grace_period: 30s # 等 SSE 连接与在途请求收尾
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: "1.2"
+
+  # =========================================================================
+  # Worker(BullMQ 消费者)—— 1 个容器
+  # 生图/文案调用上游、缩略图派生(sharp)、CSV 导入、清理与热门分重算
+  # =========================================================================
+  worker:
+    <<: *node-common
+    image: ${JUNE_IMAGE_PREFIX:-june}/worker:${JUNE_IMAGE_TAG:-latest}
+    environment:
+      <<: *db-urls
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3002"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:'+(process.env.WORKER_METRICS_PORT||3002)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 20s
+      timeout: 8s
+      retries: 4
+      start_period: 45s
+    # 生图任务最长 TASK_IMAGE_TIMEOUT_MS=300000(5 分钟)。这里不等满 5 分钟:
+    # 60 秒内没收尾就强杀,未完成任务由 BullMQ stalled 机制重新投递。
+    stop_grace_period: 60s
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    deploy:
+      resources:
+        limits:
+          # sharp/libvips 处理大图时 native 内存占用高于 api,给同样的 1.5G
+          memory: 1.5G
+          cpus: "1.2"
+
+  # =========================================================================
+  # Web(Next.js standalone)
+  # =========================================================================
+  web:
+    <<: *node-common
+    image: ${JUNE_IMAGE_PREFIX:-june}/web:${JUNE_IMAGE_TAG:-latest}
+    environment:
+      NODE_ENV: production
+      # Next standalone 读 PORT;.env.example 里的变量名是 WEB_PORT,这里做映射
+      PORT: ${WEB_PORT:-3000}
+      HOSTNAME: 0.0.0.0
+      # 说明:web 的服务端渲染通过 PUBLIC_API_ORIGIN(经 Nginx)访问 API。
+      # 若容器内无法解析对外域名(常见于内网 DNS 未回环),取消下面的 extra_hosts
+      # 注释,把域名指到宿主机网关 IP,让流量绕回本机 Nginx。
+    # extra_hosts:
+    #   - "your-domain.example.com:172.17.0.1"
+    depends_on:
+      # 用 service_started 而不是 service_healthy:api 依赖抖动时前端整站仍要能起来
+      # (页面自身有加载/错误/重试状态),否则一次数据库抖动会连带前端不可用
+      api:
+        condition: service_started
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 8s
+      retries: 4
+      start_period: 30s
+    stop_grace_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 700M
+          cpus: "0.6"
+
+  # =========================================================================
+  # Nginx —— TLS 终止 / 压缩 / 反代 / 限流兜底 / SSE 直通
+  # =========================================================================
+  nginx:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
+      # 证书目录:Let's Encrypt(certbot 输出 live/<domain>/)或自签
+      # (deploy/scripts/gen-selfsigned-cert.sh 输出到 deploy/nginx/certs)。
+      # 容器内固定路径 /etc/nginx/certs/{fullchain.pem,privkey.pem,chain.pem}
+      - ${JUNE_TLS_CERT_DIR:-./deploy/nginx/certs}:/etc/nginx/certs:ro
+      # ACME http-01 质询目录(certbot webroot 模式)
+      - ${JUNE_ACME_WEBROOT:-./deploy/nginx/acme}:/var/www/acme:ro
+    healthcheck:
+      # /healthz 由 nginx 直接 return 200,不打后端 —— 不会因为 api 故障连带重启 nginx
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: "0.3"
+
+  # =========================================================================
+  # migrate —— 一次性作业容器(profile 保护,不随 up 启动)
+  # -------------------------------------------------------------------------
+  # 为什么不在 api 启动时自动迁移:
+  #  1. 多副本/发布重叠时会出现并发迁移,Prisma 的 advisory lock 只能让一方
+  #     等待,超时后失败,表现为"发布随机失败";
+  #  2. 迁移失败应该阻断发布,而不是让 api 反复重启;
+  #  3. 迁移需要比运行时更高的数据库权限,不该长期挂在 api 进程上。
+  # 发布顺序见 docs/DEPLOYMENT.md「日常发布」:
+  #   拉镜像 → 跑 migrate job → 重启 api/worker/web → 健康检查 → 失败回滚
+  #
+  # 用法:
+  #   docker compose --profile migrate run --rm migrate                         # 迁移状态
+  #   docker compose --profile migrate run --rm migrate pnpm db:migrate:deploy  # 执行迁移
+  #   docker compose --profile migrate run --rm migrate pnpm admin:init         # 初始化管理员
+  # =========================================================================
+  migrate:
+    image: ${JUNE_IMAGE_PREFIX:-june}/migrate:${JUNE_IMAGE_TAG:-latest}
+    profiles: ["migrate"]
+    restart: "no"
+    init: true
+    env_file:
+      - .env
+    environment:
+      <<: *db-urls
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # 迁移/播种可能建索引,内存给宽一点;它与 api 不同时抢资源(发布窗口内)
+          memory: 1G
+          cpus: "1.0"
+
+  # =========================================================================
+  # mock-provider —— 压测专用的可控模拟供应商(profile 保护)
+  # -------------------------------------------------------------------------
+  # ⚠ 这是压测用模拟服务,不代表任何真实模型能力。详见 deploy/mock-provider/README.md
+  # 启用前需要在 .env 里配合修改(压测后务必改回):
+  #   MOCK_PROVIDER_ENABLED=true
+  #   MOCK_PROVIDER_BASE_URL=http://mock-provider:4010
+  #   PROVIDER_URL_ALLOW_PRIVATE_NETWORK=true   # 否则 SSRF 防护会拒绝内网 base URL
+  # =========================================================================
+  mock-provider:
+    build:
+      context: ./deploy/mock-provider
+    image: ${JUNE_IMAGE_PREFIX:-june}/mock-provider:${JUNE_IMAGE_TAG:-latest}
+    profiles: ["loadtest"]
+    restart: unless-stopped
+    init: true
+    environment:
+      MOCK_PORT: "4010"
+      # 延迟分布与错误注入:模拟上游"慢且偶发失败",用来验证队列与重试策略。
+      # 这些是压测编排参数,不属于应用配置,因此不进 .env.example。
+      MOCK_LATENCY_MS_MIN: ${MOCK_LATENCY_MS_MIN:-600}
+      MOCK_LATENCY_MS_MAX: ${MOCK_LATENCY_MS_MAX:-2500}
+      MOCK_ERROR_RATE: ${MOCK_ERROR_RATE:-0.02}
+      MOCK_RATE_LIMIT_RATE: ${MOCK_RATE_LIMIT_RATE:-0.01}
+      MOCK_ASYNC_POLL_ROUNDS: ${MOCK_ASYNC_POLL_ROUNDS:-3}
+    expose:
+      - "4010"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:'+(process.env.MOCK_PORT||4010)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # 零依赖的小 HTTP 服务,只回小 PNG
+          memory: 256M
+          cpus: "0.3"
+
+# ---------------------------------------------------------------------------
+# 资源限制总账(整机 4 核 / 8GB):
+#   内存:postgres 2G + redis 1.2G + api 1.5G + worker 1.5G + web 0.7G
+#         + nginx 0.2G = 7.1G;余 0.9G 给宿主机内核/dockerd/页缓存。
+#         注意 effective_cache_size=3GB 只是规划器提示,不占实际内存。
+#   CPU :1.5 + 0.5 + 1.2 + 1.2 + 0.6 + 0.3 = 5.3 > 4 核。
+#         这是**故意超额认购**:limits 是上限而非预留,各服务峰值不重叠
+#         (api 峰值时 worker 通常在等上游 IO)。真正的保护来自单服务上限,
+#         防止一个服务把 4 核吃光。压测后按实测重新分配。
+#   这些数字是"按测量结果调整的初值",必须在目标服务器跑完
+#   tests/load/mixed-scenario.js 后按 docs/LOAD_TEST.md 的表格回填实测值。
+# ---------------------------------------------------------------------------
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+
+# 默认 bridge 网络即可:所有服务同网段,只有 nginx 对外暴露端口。
+networks:
+  default:
+    name: june-net

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE favicon — 32×32 像素栅格专版
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  几何是 favicon-16.svg 的精确 2 倍(所有坐标 ×2),因此两档 favicon 的轮廓
+  完全同形,用户在标签栏与书签栏之间切换时不会看到图标变了一个样。
+
+  像素对齐做法:
+    · viewBox 0 0 32 32,1 用户单位 = 1 物理像素
+    · 直笔画用 rect,坐标全为偶数整数,笔画宽 4px,边线压在像素边界上
+    · 图形墨迹落在 6..26(20×20),四周留 6px;底板圆角 rx=6
+
+  仍然使用简化版几何(中横缩短、下横缺口合上):
+    shared/brand.ts 的 LOGO_SIMPLIFY_THRESHOLD = 32,规则是「渲染高度 ≤ 32 用简化图形」,
+    32px 正好落在阈值上,因此这一档仍走简化版,与 BrandLogo 组件的行为保持一致。
+    三道横画各占 4 行像素、之间各留 4 行空白,正好填满 6..26 的 20 行。
+    这一档保留紫色连接点(r=2.5,约 2.5 物理像素),它在 32px 下已经能读作一个点。
+
+  取色:底 indigo[900] #101426 / 图形 teal[400] #56DECD / 连接点 purple[400] #9B8AFB
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <!-- 深靛蓝圆角底板 -->
+  <rect x="0" y="0" width="32" height="32" rx="6" ry="6" fill="#101426" />
+
+  <g fill="#56DECD">
+    <!-- E:竖脊 6..10 x 6..26 -->
+    <rect x="6" y="6" width="4" height="20" />
+    <!-- E:上横 6..26 x 6..10 -->
+    <rect x="6" y="6" width="20" height="4" />
+    <!-- E:中横 6..16 x 14..18(上下各留 4 物理像素白间隙) -->
+    <rect x="6" y="14" width="10" height="4" />
+    <!-- E:下横 6..18 x 22..26 -->
+    <rect x="6" y="22" width="12" height="4" />
+    <!-- J:竖笔 22..26 x 6..18 -->
+    <rect x="22" y="6" width="4" height="12" />
+  </g>
+
+  <!-- J:四分之一圆弧,圆心 (18,18) 半径 6,接回下横右端 -->
+  <path d="M24 18 A6 6 0 0 1 18 24" fill="none" stroke="#56DECD" stroke-width="4" />
+
+  <!-- 紫色点缀:J 与 E 的连接处 -->
+  <circle cx="18" cy="24" r="2.5" fill="#9B8AFB" />
+</svg>

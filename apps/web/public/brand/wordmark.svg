@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE 字标(wordmark)— 定制手绘 SVG path,不依赖任何字体文件
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  造型规则:宽体、圆角、几何无衬线,单线等宽(mono-linear)。
+    · 大写字高 56(y=20 顶线 → y=76 基线),笔画宽 12,圆头圆角(round cap / join)
+    · 所有曲线都是正圆的四分之一弧(r=18),与竖笔相接处切线连续,不产生折角
+    · 字间距 20,与 U 的字腔宽度 24 接近,保证整行灰度均匀
+    · 字符墨迹边界:J 0..30 / U 50..98 / N 118..166 / E 186..234,合计宽 234
+
+  分色(体现 JUNE = JUN + E 的含义):
+    · JUN → 深靛蓝 indigo[900] #101426(代表创始人「俊哥」)
+    · E   → 深青绿 teal[700] #0C7E72(承接 E-Commerce)
+  本文件是浅色背景默认版:品牌青绿 #56DECD 在白底仅 1.6:1,
+  作为字形笔画会读不清,因此浅底一律用 teal[700](白底 4.95:1)。
+  深色背景请改用 JUN = #F8F6EF、E = #56DECD,见 lockup-horizontal-dark-bg.svg。
+
+  使用限制:禁止拉伸变形、禁止改变字距、禁止把 JUN 与 E 调换配色、
+  禁止在字标周围附加任何未经要求的口号。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 234 96" width="234" height="96"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <g fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <!-- JUN:深靛蓝 -->
+    <g stroke="#101426">
+      <!-- J:竖笔 + 左下四分之一弧 -->
+      <path d="M24 26 V52 A18 18 0 0 1 6 70" />
+      <!-- U:双竖笔 + 半圆碗 -->
+      <path d="M56 26 V52 A18 18 0 0 0 92 52 V26" />
+      <!-- N:双竖笔 + 对角斜笔 -->
+      <path d="M124 70 V26 L160 70 V26" />
+    </g>
+
+    <!-- E:品牌青绿(浅底用 teal[700]) -->
+    <g stroke="#0C7E72">
+      <!-- 竖脊 + 上横 + 下横 -->
+      <path d="M228 26 H192 V70 H228" />
+      <!-- 中横(略短,与图标中的 E 保持同一比例关系) -->
+      <path d="M192 48 H220" />
+    </g>
+  </g>
+</svg>

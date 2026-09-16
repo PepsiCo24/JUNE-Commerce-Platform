@@ -1,0 +1,939 @@
+// ============================================================================
+// JUNE-Commerce-Platform 数据模型
+// Prisma ORM 7 / PostgreSQL
+// 约定:
+//   - 时间统一使用 timestamptz 存储 UTC,展示时区在前端按用户本地化
+//   - 需要保留历史的实体使用软删除(deletedAt / status),不做物理删除
+//   - 所有跨用户可访问的表都带 ownerId/userId 并建索引,便于逐资源鉴权
+// ============================================================================
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// 账号 / 权限 / 会话
+// ============================================================================
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  // 登录密码:Argon2id 哈希,不可逆
+  passwordHash String
+  displayName  String
+  avatarKey    String? // Asset 对象键(头像)
+  bio          String?    @db.VarChar(500)
+  status       UserStatus @default(ACTIVE)
+
+  // 密码/会话失效基准:修改密码或被禁用时前移,使旧会话立即失效
+  sessionEpoch      Int       @default(0)
+  passwordChangedAt DateTime? @db.Timestamptz(3)
+  lastLoginAt       DateTime? @db.Timestamptz(3)
+  lastActiveAt      DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  roles           UserRole[]
+  sessions        Session[]
+  posts           Post[]
+  comments        Comment[]
+  likes           Like[]
+  bookmarks       Bookmark[]
+  shops           Shop[]
+  products        Product[]
+  assets          Asset[]
+  generationTasks GenerationTask[]
+  auditLogs       AuditLog[]        @relation("AuditActor")
+  reauthTokens    ReauthToken[]
+  storageUsage    StorageUsage?
+  importJobs      ImportJob[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([lastActiveAt])
+  @@map("users")
+}
+
+/// RBAC 角色。level 越大权限越高:USER=10, ADMIN=50, SUPER_ADMIN=100
+model Role {
+  id          String   @id @default(cuid())
+  slug        String   @unique // user / admin / super_admin
+  name        String
+  description String?
+  level       Int
+  /// 细粒度权限点,例如 ["post.manage", "model.manage"]
+  permissions String[] @default([])
+  isSystem    Boolean  @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  users UserRole[]
+
+  @@index([level])
+  @@map("roles")
+}
+
+model UserRole {
+  userId    String
+  roleId    String
+  grantedAt DateTime @default(now()) @db.Timestamptz(3)
+  grantedBy String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// 会话表。数据库保存哈希后的令牌,Cookie 中只有随机原文。
+/// scope 区分普通站点会话与 /admin 会话,便于独立登录入口与独立失效。
+enum SessionScope {
+  SITE
+  ADMIN
+}
+
+model Session {
+  id        String       @id @default(cuid())
+  userId    String
+  scope     SessionScope @default(SITE)
+  /// sha256(token),唯一索引;原文只存在于 HttpOnly Cookie
+  tokenHash String       @unique
+  /// 创建会话时用户的 sessionEpoch,与 User.sessionEpoch 不一致即失效
+  epoch     Int          @default(0)
+  ip        String?
+  userAgent String?      @db.VarChar(400)
+
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime  @db.Timestamptz(3)
+  revokedAt      DateTime? @db.Timestamptz(3)
+  revokedReason  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scope])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// 敏感操作(查看店铺密码)前的近期重新验证凭证,一次性使用
+model ReauthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  purpose   String // credential.reveal
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("reauth_tokens")
+}
+
+// ============================================================================
+// 社区:帖子 / 评论 / 点赞
+// ============================================================================
+
+enum PostStatus {
+  DRAFT // 草稿:仅作者可见
+  PUBLISHED // 已发布:公开链接可访问
+  HIDDEN // 管理员隐藏:公开链接立即拒绝
+  DELETED // 软删除
+}
+
+model Post {
+  id     String     @id @default(cuid())
+  /// 稳定公开链接使用的 slug,发布时生成且不再变化
+  slug   String     @unique
+  authorId String
+  status PostStatus @default(DRAFT)
+
+  title   String  @db.VarChar(200)
+  /// 服务端清洗后的富文本 HTML(唯一渲染来源)
+  contentHtml String
+  /// 编辑器原始 JSON,用于继续编辑
+  contentJson Json?
+  /// 纯文本摘要,列表与分享元信息使用
+  excerpt String? @db.VarChar(300)
+
+  coverAssetId String?
+  /// 正文图片顺序引用(Asset id 数组),用于引用计数与清理判断
+  imageAssetIds String[] @default([])
+
+  isPinned Boolean @default(false)
+  /// 置顶自定义顺序,数值越小越靠前
+  pinnedOrder Int?
+  pinnedAt    DateTime? @db.Timestamptz(3)
+
+  likeCount    Int @default(0)
+  commentCount Int @default(0)
+  viewCount    Int @default(0)
+  /// 热门分数:由 likeCount/commentCount/时间衰减计算,定时刷新,用于排序索引
+  hotScore     Float @default(0)
+
+  publishedAt DateTime? @db.Timestamptz(3)
+  /// 发布后的内容编辑时间,详情页展示"编辑于"
+  contentEditedAt DateTime? @db.Timestamptz(3)
+  /// 草稿自动保存版本号,用于丢弃过期的并发保存请求
+  draftRevision Int @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  hiddenAt     DateTime? @db.Timestamptz(3)
+  hiddenReason String?
+
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  coverAsset  Asset?    @relation("PostCover", fields: [coverAssetId], references: [id], onDelete: SetNull)
+  comments    Comment[]
+  likes       Like[]
+  bookmarks   Bookmark[]
+
+  @@index([status, isPinned, pinnedOrder, publishedAt(sort: Desc)])
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([status, hotScore(sort: Desc), publishedAt(sort: Desc)])
+  @@index([status, likeCount(sort: Desc), publishedAt(sort: Desc)])
+  @@index([status, commentCount(sort: Desc), publishedAt(sort: Desc)])
+  @@index([authorId, status, updatedAt(sort: Desc)])
+  @@index([createdAt])
+  @@map("posts")
+}
+
+enum CommentStatus {
+  VISIBLE
+  HIDDEN
+  DELETED
+}
+
+model Comment {
+  id       String        @id @default(cuid())
+  postId   String
+  authorId String
+  /// 一级回复:parentId 指向被回复的评论
+  parentId String?
+  content  String        @db.VarChar(2000)
+  status   CommentStatus @default(VISIBLE)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  hiddenAt     DateTime? @db.Timestamptz(3)
+  hiddenReason String?
+
+  post    Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
+
+  @@index([postId, status, createdAt])
+  @@index([authorId, createdAt])
+  @@index([parentId])
+  @@map("comments")
+}
+
+/// 点赞:唯一约束保证同一用户对同一帖子只能点赞一次
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId, createdAt])
+  @@map("likes")
+}
+
+/// 收藏:仅本人可见兴趣记录;唯一约束保证幂等
+model Bookmark {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([postId])
+  @@map("bookmarks")
+}
+
+// ============================================================================
+// 店铺 / 凭据 / 商品
+// ============================================================================
+
+enum ShopType {
+  MAIN
+  SUB
+}
+
+enum ShopStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+model Shop {
+  id      String     @id @default(cuid())
+  ownerId String
+  type    ShopType   @default(MAIN)
+  status  ShopStatus @default(ACTIVE)
+
+  name        String  @db.VarChar(120)
+  platform    String? @db.VarChar(60)
+  url         String? @db.VarChar(500)
+  description String? @db.VarChar(1000)
+  contactName String? @db.VarChar(80)
+  contactInfo String? @db.VarChar(200)
+  note        String? @db.VarChar(1000)
+
+  /// 主子店关系。仅允许挂接同一 ownerId 的主店铺,应用层禁止循环
+  parentId String?
+
+  /// 显式记录哪些可继承字段已被子店覆盖。主店变更时只同步未覆盖字段。
+  /// 取值来自 INHERITABLE_SHOP_FIELDS: platform / contactName / contactInfo / note
+  overriddenFields String[] @default([])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  owner       User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent      Shop?            @relation("ShopHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Shop[]           @relation("ShopHierarchy")
+  credentials ShopCredential[]
+  products    Product[]
+
+  @@index([ownerId, type, deletedAt])
+  @@index([ownerId, name])
+  @@index([parentId])
+  @@map("shops")
+}
+
+/// 店铺账号密码。密码使用 AES-256-GCM 服务端认证加密(需要取回明文),
+/// 与平台登录密码的不可逆哈希严格区分。普通接口不返回明文字段。
+model ShopCredential {
+  id      String @id @default(cuid())
+  shopId  String
+  /// 冗余 ownerId,便于在不 join 的情况下做归属校验
+  ownerId String
+
+  purpose  String  @db.VarChar(120) // 用途:如"卖家后台""客服系统"
+  account  String  @db.VarChar(200)
+  loginUrl String? @db.VarChar(500)
+  note     String? @db.VarChar(1000)
+
+  /// 密文(base64)。keyVersion 用于密钥轮换
+  passwordCipher String
+  passwordIv     String
+  passwordTag    String
+  keyVersion     Int    @default(1)
+  /// 密码末次更新时间,用于提示轮换
+  passwordUpdatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([shopId, deletedAt])
+  @@index([ownerId])
+  @@index([shopId, purpose])
+  @@map("shop_credentials")
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  OFF_SHELF
+  ARCHIVED
+}
+
+model Product {
+  id      String        @id @default(cuid())
+  ownerId String
+  shopId  String
+  status  ProductStatus @default(DRAFT)
+
+  name        String  @db.VarChar(200)
+  sku         String? @db.VarChar(80)
+  /// AI 生成或人工编写的营销标题
+  title       String? @db.VarChar(300)
+  description String?
+  /// 价格使用 Decimal 避免浮点误差
+  price       Decimal? @db.Decimal(12, 2)
+  currency    String   @default("CNY") @db.VarChar(8)
+  stock       Int      @default(0)
+
+  /// 扩展属性(颜色/尺码/自定义字段等)
+  attributes Json @default("{}")
+
+  coverAssetId  String?
+  imageAssetIds String[] @default([])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  owner      User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shop       Shop   @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  coverAsset Asset? @relation("ProductCover", fields: [coverAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([shopId, sku])
+  @@index([ownerId, deletedAt, updatedAt(sort: Desc)])
+  @@index([shopId, status, updatedAt(sort: Desc)])
+  @@index([ownerId, name])
+  @@map("products")
+}
+
+/// CSV 批量导入作业,由 Worker 逐行处理并回写逐行错误
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  RUNNING
+  PARTIAL
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model ImportJob {
+  id      String       @id @default(cuid())
+  ownerId String
+  shopId  String?
+  kind    String       @default("product_csv")
+  status  ImportStatus @default(PENDING)
+
+  fileAssetId String?
+  fileName    String?
+  totalRows   Int          @default(0)
+  processedRows Int        @default(0)
+  successRows Int          @default(0)
+  failedRows  Int          @default(0)
+  /// 逐行错误:[{ row, field, code, message }]
+  rowErrors   Json         @default("[]")
+  errorMessage String?
+
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  startedAt   DateTime? @db.Timestamptz(3)
+  finishedAt  DateTime? @db.Timestamptz(3)
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("import_jobs")
+}
+
+// ============================================================================
+// 资产 / 存储
+// ============================================================================
+
+enum AssetKind {
+  POST_IMAGE
+  PRODUCT_IMAGE
+  SHOP_IMAGE
+  AVATAR
+  REFERENCE_IMAGE
+  GENERATED_IMAGE
+  IMPORT_FILE
+}
+
+enum AssetStatus {
+  /// 已签发直传凭证,尚未确认上传
+  PENDING
+  /// 已校验并可用
+  ACTIVE
+  /// 超过宽限期且无业务引用
+  ORPHAN
+  /// 已删除,处于回收期
+  RECYCLED
+  /// 回收期结束,对象存储已清除
+  PURGED
+}
+
+enum AssetVisibility {
+  /// 公开帖子图,可走公共缓存
+  PUBLIC
+  /// 店铺图、参考图、生成结果:仅授权短时 URL
+  PRIVATE
+}
+
+/// 资产表只存对象键与元信息,绝不存 Base64 或二进制
+model Asset {
+  id         String          @id @default(cuid())
+  ownerId    String
+  kind       AssetKind
+  status     AssetStatus     @default(PENDING)
+  visibility AssetVisibility @default(PRIVATE)
+
+  /// 对象存储键(原图)
+  objectKey String @unique
+  bucket    String
+  mimeType  String @db.VarChar(120)
+  byteSize  Int    @default(0)
+  width     Int?
+  height    Int?
+  /// 内容哈希,用于同一用户内去重
+  sha256      String?
+  originalName String? @db.VarChar(300)
+
+  /// 派生图:{ thumb: {key,w,h,bytes}, preview: {...} }
+  derivatives Json @default("{}")
+  /// 派生图生成状态:pending / ready / failed / skipped
+  derivativeStatus String @default("pending") @db.VarChar(20)
+
+  /// 业务引用计数。>0 时禁止物理删除
+  refCount Int @default(0)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  /// 确认上传并通过校验的时间
+  confirmedAt DateTime? @db.Timestamptz(3)
+  /// 进入回收期的时间
+  recycledAt DateTime? @db.Timestamptz(3)
+  /// 对象存储实际清除时间
+  purgedAt   DateTime? @db.Timestamptz(3)
+
+  owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  postCovers        Post[]             @relation("PostCover")
+  productCovers     Product[]          @relation("ProductCover")
+  generationResults GenerationResult[]
+
+  @@unique([ownerId, sha256, kind])
+  @@index([ownerId, kind, status])
+  @@index([status, createdAt])
+  @@index([status, recycledAt])
+  @@map("assets")
+}
+
+/// 每用户存储用量与配额,上传前检查
+model StorageUsage {
+  userId     String @id
+  bytesUsed  BigInt @default(0)
+  quotaBytes BigInt
+  assetCount Int    @default(0)
+  /// 回收期内尚未物理删除的字节数(仍占用对象存储)
+  recycledBytes BigInt @default(0)
+
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("storage_usage")
+}
+
+// ============================================================================
+// 模型供应商 / 模型配置
+// ============================================================================
+
+/// 供应商协议种类。决定使用哪个适配器,不可随意新增字符串。
+enum ProviderKind {
+  OPENAI
+  GEMINI
+  ARK_SEEDREAM
+  ALIYUN_WANX
+  BFL_FLUX
+  OPENAI_COMPATIBLE
+  /// 压测专用的可控模拟服务,始终带 MOCK 标识
+  MOCK
+}
+
+model ModelProvider {
+  id       String       @id @default(cuid())
+  slug     String       @unique
+  kind     ProviderKind
+  name     String       @db.VarChar(120)
+  baseUrl  String       @db.VarChar(500)
+  enabled  Boolean      @default(true)
+  sortOrder Int         @default(0)
+
+  /// API Key 密文(AES-256-GCM)。任何读接口都不回传明文
+  apiKeyCipher String?
+  apiKeyIv     String?
+  apiKeyTag    String?
+  keyVersion   Int      @default(1)
+  /// 脱敏展示用:如 sk-****abcd
+  apiKeyMasked String?  @db.VarChar(64)
+  /// 凭据是否已配置。未配置的供应商下所有模型对用户不可选
+  hasCredential Boolean @default(false)
+
+  /// 供应商级频率限制(次/分钟),0 表示不限
+  rateLimitPerMinute Int @default(0)
+  /// 供应商级并发上限,0 表示只受全局限制
+  maxConcurrency Int @default(0)
+
+  /// 最近一次连接测试
+  lastTestedAt     DateTime? @db.Timestamptz(3)
+  lastTestOk       Boolean?
+  lastTestMessage  String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  models ModelConfig[]
+
+  @@index([enabled, sortOrder])
+  @@map("model_providers")
+}
+
+enum ModelCapability {
+  TEXT_TO_IMAGE
+  IMAGE_EDIT
+  TEXT
+}
+
+model ModelConfig {
+  id         String @id @default(cuid())
+  providerId String
+  slug       String @unique
+  /// 后台显示名
+  displayName String @db.VarChar(120)
+  /// 真实模型标识,提交给供应商的值
+  modelKey    String @db.VarChar(200)
+
+  capabilities ModelCapability[]
+
+  enabled Boolean @default(true)
+  /// 是否对普通用户可见(可见性)
+  visible Boolean @default(true)
+  sortOrder Int   @default(0)
+  /// 该能力下的默认模型
+  isDefault Boolean @default(false)
+
+  /// 能力与参数上限。结构见 packages/shared 的 ModelLimits:
+  /// { maxOutputs, maxReferenceImages, supportsNegativePrompt, sizes[], aspectRatios[], ... }
+  limits Json @default("{}")
+  /// 供应商特有的固定参数(如 watermark=false)
+  defaultParams Json @default("{}")
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  provider ModelProvider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  tasks    GenerationTask[]
+
+  @@unique([providerId, modelKey])
+  @@index([enabled, visible, sortOrder])
+  @@map("model_configs")
+}
+
+// ============================================================================
+// 生成任务(生图 / 文案)
+// ============================================================================
+
+enum TaskType {
+  IMAGE_GENERATE
+  IMAGE_EDIT
+  TEXT_COPY
+}
+
+enum TaskStatus {
+  QUEUED
+  RUNNING
+  /// 多图任务部分成功
+  PARTIAL
+  SUCCEEDED
+  FAILED
+  CANCELED
+  TIMEOUT
+  /// 上游结果未知,需要核对后再决定,禁止盲目重试付费调用
+  UNKNOWN
+}
+
+model GenerationTask {
+  id     String     @id @default(cuid())
+  userId String
+  type   TaskType
+  status TaskStatus @default(QUEUED)
+
+  modelConfigId String?
+  /// 冗余快照:模型停用/删除后历史任务仍可展示当时配置
+  providerSlug  String? @db.VarChar(80)
+  modelKey      String? @db.VarChar(200)
+  modelDisplayName String? @db.VarChar(120)
+  /// 提交时的全局模型配置版本号,便于排查
+  configVersion Int    @default(0)
+
+  /// 幂等键:同一用户重复提交返回同一任务
+  idempotencyKey String
+
+  /// 已校验的输入参数(不含任何密钥)
+  input Json
+  /// 参考图 Asset id
+  referenceAssetIds String[] @default([])
+  referenceCount    Int      @default(0)
+  /// 请求输出数量
+  requestedCount Int @default(1)
+  succeededCount Int @default(0)
+  failedCount    Int @default(0)
+
+  /// 供应商任务 ID(异步轮询用)。批量拆分调用时记录多个
+  providerTaskIds String[] @default([])
+  /// 上游调用计费次数统计(每次实际调用都计入)
+  providerCallCount Int @default(0)
+
+  /// 阶段标识:queued / submitting / generating / polling / downloading / checking / done
+  /// 供应商未提供真实百分比时只展示阶段,不编造进度
+  stage        String  @default("queued") @db.VarChar(24)
+  progressPercent Int? // 仅当上游返回真实百分比时才有值
+
+  errorCode    String? @db.VarChar(80)
+  errorMessage String?
+  /// 可重试标记
+  retryable    Boolean @default(false)
+  attempt      Int     @default(0)
+
+  queuePriority Int @default(0)
+
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+  startedAt  DateTime? @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  /// 上游耗时(毫秒),与平台排队耗时分开统计
+  upstreamDurationMs Int?
+  queueWaitMs        Int?
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modelConfig ModelConfig?       @relation(fields: [modelConfigId], references: [id], onDelete: SetNull)
+  results     GenerationResult[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, type, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([type, status, createdAt])
+  @@map("generation_tasks")
+}
+
+enum ResultStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model GenerationResult {
+  id     String       @id @default(cuid())
+  taskId String
+  /// 同一任务内的序号,用于"成功图片不重复生成"的定位与失败项重试
+  seq    Int
+  status ResultStatus @default(PENDING)
+
+  /// 生图结果:转存后的 Asset
+  assetId String?
+  /// 文案结果:结构化输出 { titles: [], body: "", ... }
+  textPayload Json?
+
+  /// 供应商侧标识与临时链接(仅做溯源,不作为长期访问入口)
+  providerTaskId String?  @db.VarChar(200)
+  providerRefUrl String?  @db.VarChar(1000)
+
+  /// 内容检查结果:{ passed, violations: [...], rewriteCount }
+  checkResult Json?
+
+  errorCode    String? @db.VarChar(80)
+  errorMessage String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+
+  task  GenerationTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  asset Asset?         @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, seq])
+  @@index([taskId, status])
+  @@map("generation_results")
+}
+
+// ============================================================================
+// 内容规则 / 系统配置 / 审计
+// ============================================================================
+
+enum ContentRuleType {
+  /// 后端注入的系统提示词(不下发前端)
+  SYSTEM_PROMPT
+  /// 违禁词(精确/包含匹配)
+  BANNED_WORD
+  /// 禁用表达(正则)
+  BANNED_PHRASE
+  /// 禁止内容类别(语义类,交给模型判定 + 关键词兜底)
+  BANNED_CATEGORY
+  /// 目标平台规则(如标题字数、禁用符号)
+  PLATFORM_RULE
+}
+
+enum RuleAction {
+  /// 直接拦截,不展示
+  BLOCK
+  /// 要求模型有限次数重写
+  REWRITE
+  /// 仅记录并提示
+  WARN
+}
+
+model ContentRule {
+  id     String          @id @default(cuid())
+  type   ContentRuleType
+  action RuleAction      @default(BLOCK)
+
+  name String @db.VarChar(160)
+  /// 适用范围:目标平台标识,空数组表示全部平台
+  platforms String[] @default([])
+  /// 规则载荷:词表 / 正则 / 提示词文本 / 平台限制参数
+  payload Json
+  /// 是否对输入检查生效
+  applyToInput Boolean @default(true)
+  /// 是否对模型输出检查生效
+  applyToOutput Boolean @default(true)
+
+  enabled   Boolean @default(true)
+  sortOrder Int     @default(0)
+  /// 当前版本号,每次修改自增并写入版本历史
+  version   Int     @default(1)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+  createdBy String?
+  updatedBy String?
+
+  versions ContentRuleVersion[]
+
+  @@index([type, enabled, sortOrder])
+  @@map("content_rules")
+}
+
+/// 规则版本记录,保留每次修改的完整快照
+model ContentRuleVersion {
+  id      String @id @default(cuid())
+  ruleId  String
+  version Int
+  snapshot Json
+  changedBy String?
+  changeNote String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  rule ContentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, version])
+  @@map("content_rule_versions")
+}
+
+/// 系统配置键值表。isSecret=true 的值加密存储且不下发前端。
+model SystemConfig {
+  key   String  @id
+  /// 非敏感值
+  value Json?
+  /// 敏感值密文
+  valueCipher String?
+  valueIv     String?
+  valueTag    String?
+  keyVersion  Int     @default(1)
+
+  isSecret Boolean @default(false)
+  /// public=true 的非敏感配置会通过 SSE 下发前端
+  isPublic Boolean @default(false)
+  /// 分组:models / share / concurrency / storage / content
+  group    String  @db.VarChar(40)
+  description String?
+
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  updatedBy String?
+
+  @@index([group])
+  @@index([isPublic])
+  @@map("system_configs")
+}
+
+/// 配置修订号。任何影响前端的配置变更都自增对应 scope 的 version,
+/// SSE 推送该版本号,前端据此补拉公开配置。
+model ConfigRevision {
+  scope     String   @id // models / content / share / concurrency
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  updatedBy String?
+
+  @@map("config_revisions")
+}
+
+model AuditLog {
+  id      String  @id @default(cuid())
+  actorId String?
+  /// 保留操作者标识快照,便于用户删除后仍可追溯
+  actorEmail String? @db.VarChar(200)
+  actorRole  String? @db.VarChar(40)
+
+  action     String  @db.VarChar(80) // post.hide / credential.reveal / model.update ...
+  targetType String  @db.VarChar(60)
+  targetId   String? @db.VarChar(80)
+  /// 变更前后差异(已脱敏,禁止写入任何密码或密钥)
+  diff       Json?
+  metadata   Json?
+  ip         String?
+  userAgent  String? @db.VarChar(400)
+  result     String  @default("success") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// 清理任务执行记录(支持预览 / 执行 / 幂等重跑)
+model CleanupRun {
+  id     String @id @default(cuid())
+  kind   String @db.VarChar(60) // orphan_asset / expired_upload / recycled_asset / queue_record
+  /// dryRun=true 表示预览,不做实际删除
+  dryRun Boolean @default(true)
+  status String  @default("running") @db.VarChar(20)
+
+  scanned Int @default(0)
+  matched Int @default(0)
+  affected Int @default(0)
+  freedBytes BigInt @default(0)
+  /// 预览明细样本,便于人工确认
+  sample Json @default("[]")
+  errorMessage String?
+
+  startedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  triggeredBy String?
+
+  @@index([kind, startedAt(sort: Desc)])
+  @@map("cleanup_runs")
+}

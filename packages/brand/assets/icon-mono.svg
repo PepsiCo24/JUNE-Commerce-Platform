@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE 品牌图标 — 单色版(currentColor)
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  全部笔画使用 currentColor,由父元素的 CSS color 决定颜色,可放在任意背景上:
+    · 深靛蓝背景 → color: #F8F6EF(象牙白,17.1:1)或 #56DECD(品牌青绿,11.3:1)
+    · 浅色背景的小尺寸/小字号场景 → color: #0C7E72(teal[700],白底 4.95:1)
+    · 浅色背景的大尺寸场景 → color: #101426(深靛蓝,白底约 16.9:1)
+  以上色值全部取自 packages/shared/src/brand.ts,不得另起色值。
+
+  与彩色版的唯一差异:紫色连接珠改为 currentColor 的实心圆(r=5 不变)。
+  它仍然桥接 E 的下横与 J 的弧线末端,比笔画半宽(4)大 1 单位,
+  因此在单色下连接处依旧读作一个「节点」,保留「J 的弧线连回 E」的设计语义,
+  只是不再有紫色。
+
+  几何与 icon.svg 完全一致(64×64 栅格,墨迹 8..56)。
+  使用限制:禁止拉伸变形;单色版只允许整体换色,不允许局部改色。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     preserveAspectRatio="xMidYMid meet" fill="currentColor" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <g fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <!-- E:上横 + 竖脊 + 下横 -->
+    <path d="M52 12 H12 V51 H22" />
+    <!-- E:中横 -->
+    <path d="M12 31 H30" />
+    <!-- J:竖笔 + 四分之一圆弧 -->
+    <path d="M52 12 V33 A18 18 0 0 1 34 51" />
+  </g>
+
+  <!-- J 与 E 的连接节点(单色下代替紫色连接珠) -->
+  <circle cx="28" cy="51" r="5" fill="currentColor" />
+</svg>

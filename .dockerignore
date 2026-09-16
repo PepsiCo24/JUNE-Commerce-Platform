@@ -1,0 +1,66 @@
+# ============================================================================
+# 构建上下文排除清单
+# 目标:上下文越小越好(传输快 + 层缓存稳),并且绝不把 .env / 备份 / 证书
+# 这类东西送进镜像。
+# 注意:pnpm-lock.yaml、pnpm-workspace.yaml、.npmrc、packages/db/prisma/
+# 都必须保留,构建需要它们。
+# ============================================================================
+
+# ---- 依赖与构建产物(镜像内会重新安装/编译)----
+**/node_modules
+**/dist
+**/build
+**/.next
+**/out
+**/*.tsbuildinfo
+**/.turbo
+# Prisma 7 客户端在镜像内由 pnpm db:generate 重新生成
+packages/db/generated
+
+# ---- 机密与本地配置(绝不进镜像)----
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+deploy/nginx/certs
+deploy/**/*.pem
+deploy/**/*.key
+deploy/.image-tag
+secrets/
+
+# ---- 运行产物与数据 ----
+logs/
+**/*.log
+backups/
+tmp/
+.uploads-local/
+coverage/
+.nyc_output/
+tests/load/results/
+loadtest/results/
+
+# ---- 部署相关:不参与应用镜像构建 ----
+# (mock-provider 有自己的 Dockerfile 与独立构建上下文,不需要进主镜像)
+docker-compose.yml
+docker-compose.dev.yml
+deploy/
+docs/
+*.md
+
+# 说明:tests/ 故意**不排除**。migrate 工具镜像需要 tests/load/ 下的
+# 播种与清理脚本(见 docs/LOAD_TEST.md);这些脚本只有几十 KB,
+# 且 migrate 是一次性 job 镜像,不会随运行时镜像分发。
+
+# ---- 版本控制与编辑器 ----
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+**/.DS_Store
+.editorconfig
+.prettierrc.json
+.prettierignore

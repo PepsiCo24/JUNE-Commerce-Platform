@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE 横向组合标(图标 + JUNE 字标)— 浅色背景默认版
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  版式(viewBox 400×144):
+    · 图标:64 栅格 ×1.5 → 墨迹 72×72,落在 x 36..108 / y 36..108
+      放大后图标笔画 = 8×1.5 = 12,与字标笔画宽 12 完全一致,两者灰度匹配
+    · 字标:原生 234×96 平移到 x 130..364,大写字高中线对齐图标墨迹中线(y=72)
+    · 图标与字标间距 22,约为图标高度的 0.3 倍
+
+  留白规则(clear space)
+    最小留白 = 图标高度 × 0.5 = 72 × 0.5 = 36 单位(= viewBox 高度的 25%)。
+    该留白已内建在本文件 viewBox 的四周;把整个 SVG 当作一个不可侵入的矩形使用即可,
+    其外不得再叠加任何文字、线条、图形或裁切边。若在版面中另行排版,
+    请按「图标高度的一半」向四周预留同等空白。
+
+  取色:JUN/J = indigo[900] #101426,E = teal[700] #0C7E72,连接点 = purple[500] #7B65F7
+  使用限制:整体等比缩放;禁止拉伸变形、禁止改变图标与字标的相对大小与间距、
+  禁止任意改色、禁止把品牌展示图或截图裁切当作本组合标使用。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 144" width="400" height="144"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <!-- 图标 -->
+  <g transform="translate(24 24) scale(1.5)">
+    <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#0C7E72" d="M52 12 H12 V51 H22" />
+      <path stroke="#0C7E72" d="M12 31 H30" />
+      <path stroke="#101426" d="M52 12 V33 A18 18 0 0 1 34 51" />
+    </g>
+    <circle cx="28" cy="51" r="5" fill="#7B65F7" />
+  </g>
+
+  <!-- 字标 JUNE -->
+  <g transform="translate(130 24)" fill="none" stroke-width="12"
+     stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#101426">
+      <path d="M24 26 V52 A18 18 0 0 1 6 70" />
+      <path d="M56 26 V52 A18 18 0 0 0 92 52 V26" />
+      <path d="M124 70 V26 L160 70 V26" />
+    </g>
+    <g stroke="#0C7E72">
+      <path d="M228 26 H192 V70 H228" />
+      <path d="M192 48 H220" />
+    </g>
+  </g>
+</svg>

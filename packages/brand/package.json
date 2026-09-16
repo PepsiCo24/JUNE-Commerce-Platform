@@ -1,0 +1,32 @@
+{
+  "name": "@june/brand",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./assets/*": "./assets/*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "rasters": "node scripts/generate-rasters.mjs",
+    "lint": "echo \"@june/brand: 由根 prettier 统一格式化\""
+  },
+  "dependencies": {
+    "@june/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "@types/react": "^19.0.0",
+    "react": "19.3.0",
+    "typescript": "5.9.3"
+  }
+}

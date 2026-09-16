@@ -1,0 +1,9 @@
+{
+  // 种子与运维脚本只通过 tsx 直接运行,不参与 dist 构建;
+  // 这份配置专用于对它们做类型检查,避免脚本随 schema 演进而失效。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "generated/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts"]
+}

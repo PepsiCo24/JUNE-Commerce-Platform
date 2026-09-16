@@ -1,0 +1,42 @@
+{
+  "name": "@june/db",
+  "version": "0.1.0",
+  "private": true,
+  "//": "generated/ 与 src/ 同级,tsconfig 的 rootDir 为包根,因此产物在 dist/src 下",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "migrate:status": "prisma migrate status",
+    "reset": "prisma migrate reset",
+    "studio": "prisma studio",
+    "seed": "tsx prisma/seed.ts",
+    "admin:init": "tsx scripts/admin-init.ts",
+    "loadtest:seed": "tsx scripts/loadtest-seed.ts",
+    "lint": "echo \"@june/db: 无独立 lint 配置\""
+  },
+  "dependencies": {
+    "@node-rs/argon2": "2.2.1",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "@types/pg": "8.15.6",
+    "dotenv": "17.2.4",
+    "prisma": "7.10.0",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

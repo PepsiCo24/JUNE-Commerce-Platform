@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE favicon(矢量主文件,浏览器优先使用)
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  设计取舍:
+    · 带不透明深靛蓝圆角底板(64×64,rx=14)。浏览器标签栏的底色由系统主题决定,
+      透明背景的图标在浅色栏和深色栏里必然有一侧读不清,底板可以一次性消除这个问题。
+    · 底板上使用简化版几何(中横缩短、笔画加粗到 10),
+      因为 favicon 实际渲染尺寸通常是 16 / 32 px,完整版的细节在这个尺寸下会糊成一团。
+    · 图形整体 ×0.75 居中,墨迹落在 14..50,四周留 14 单位安全边距(约 21.9%),
+      即使浏览器给 favicon 加圆角遮罩也不会切到图形。
+    · 底板上可以使用品牌青绿本体 #56DECD(对 #101426 为 11.3:1)。
+
+  取色:底 indigo[900] #101426 / E teal[400] #56DECD / J ivory[50] #F8F6EF
+        / 连接点 purple[400] #9B8AFB
+  引用方式:link rel="icon" href="/icons/favicon.svg" type="image/svg+xml"
+  位图回退见同目录 favicon-16.svg / favicon-32.svg 与 scripts/generate-rasters.mjs。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <!-- 深靛蓝圆角底板(不透明) -->
+  <rect x="0" y="0" width="64" height="64" rx="14" ry="14" fill="#101426" />
+
+  <!-- 简化版图形,居中缩放至 75% -->
+  <g transform="translate(8 8) scale(0.75)">
+    <g fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#56DECD" d="M51 13 H13 V51 H20" />
+      <path stroke="#56DECD" d="M13 32 H28" />
+      <path stroke="#F8F6EF" d="M51 13 V33 A18 18 0 0 1 33 51" />
+    </g>
+    <circle cx="26" cy="51" r="5" fill="#9B8AFB" />
+  </g>
+</svg>

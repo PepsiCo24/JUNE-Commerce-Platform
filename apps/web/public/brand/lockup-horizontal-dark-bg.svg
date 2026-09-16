@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE 横向组合标 — 深色背景版(自带深靛蓝底)
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  版式与 lockup-horizontal.svg 完全一致(viewBox 400×144,图标 ×1.5,字标 x 130..364)。
+  唯一差异是配色与一块铺满 viewBox 的深靛蓝底:
+    · 底色     indigo[900] #101426
+    · JUN / J  象牙白 ivory[50] #F8F6EF,与底色对比度 17.1:1
+    · E        品牌青绿 teal[400] #56DECD,与底色对比度 11.3:1(深底可用品牌色本体)
+    · 连接点   辅助紫 purple[400] #9B8AFB,与底色对比度 6.5:1
+
+  深色背景是唯一能使用品牌青绿 #56DECD 本体的场景;浅色背景必须降到 teal[700]
+  #0C7E72,见 lockup-horizontal-light-bg.svg。
+
+  留白规则(clear space)
+    最小留白 = 图标高度 × 0.5 = 36 单位,即本文件底色矩形四周的空白区,
+    该区域属于标识的一部分,不得叠加元素,也不得被裁切掉以「贴合」文字。
+    若把本文件放在其他深色背景上,请保证外部背景明度接近 #101426,
+    否则底色矩形会形成明显的色块边缘,此时应改用 icon-mono.svg + 字标自行排版。
+
+  使用限制:整体等比缩放;禁止拉伸变形、禁止改色、禁止去掉底色后直接把浅色字标放到深底上。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 144" width="400" height="144"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <!-- 深靛蓝底 -->
+  <rect x="0" y="0" width="400" height="144" fill="#101426" />
+
+  <!-- 图标 -->
+  <g transform="translate(24 24) scale(1.5)">
+    <g fill="none" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path stroke="#56DECD" d="M52 12 H12 V51 H22" />
+      <path stroke="#56DECD" d="M12 31 H30" />
+      <path stroke="#F8F6EF" d="M52 12 V33 A18 18 0 0 1 34 51" />
+    </g>
+    <circle cx="28" cy="51" r="5" fill="#9B8AFB" />
+  </g>
+
+  <!-- 字标 JUNE -->
+  <g transform="translate(130 24)" fill="none" stroke-width="12"
+     stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#F8F6EF">
+      <path d="M24 26 V52 A18 18 0 0 1 6 70" />
+      <path d="M56 26 V52 A18 18 0 0 0 92 52 V26" />
+      <path d="M124 70 V26 L160 70 V26" />
+    </g>
+    <g stroke="#56DECD">
+      <path d="M228 26 H192 V70 H228" />
+      <path d="M192 48 H220" />
+    </g>
+  </g>
+</svg>

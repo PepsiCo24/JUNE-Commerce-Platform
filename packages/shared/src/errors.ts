@@ -1,0 +1,158 @@
+/**
+ * 统一错误码。前端据此做本地化提示与分支处理,禁止靠匹配错误文案判断类型。
+ * 后端统一错误响应体见 ApiErrorBody。
+ */
+
+export const ERROR_CODES = {
+  // 通用
+  VALIDATION_FAILED: 'VALIDATION_FAILED',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  RATE_LIMITED: 'RATE_LIMITED',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+
+  // 认证与权限
+  UNAUTHENTICATED: 'UNAUTHENTICATED',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
+  ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  CSRF_FAILED: 'CSRF_FAILED',
+  FORBIDDEN: 'FORBIDDEN',
+  ADMIN_REQUIRED: 'ADMIN_REQUIRED',
+  /** 需要近期重新验证身份(查看店铺密码) */
+  REAUTH_REQUIRED: 'REAUTH_REQUIRED',
+  REAUTH_INVALID: 'REAUTH_INVALID',
+  /** 禁止删除或禁用最后一个超级管理员 */
+  LAST_SUPER_ADMIN: 'LAST_SUPER_ADMIN',
+
+  // 资源归属
+  NOT_RESOURCE_OWNER: 'NOT_RESOURCE_OWNER',
+
+  // 社区
+  POST_NOT_PUBLISHED: 'POST_NOT_PUBLISHED',
+  POST_HIDDEN: 'POST_HIDDEN',
+  DRAFT_STALE: 'DRAFT_STALE',
+  ALREADY_LIKED: 'ALREADY_LIKED',
+  NOT_LIKED: 'NOT_LIKED',
+  ALREADY_BOOKMARKED: 'ALREADY_BOOKMARKED',
+  NOT_BOOKMARKED: 'NOT_BOOKMARKED',
+
+  // 店铺 / 商品
+  SHOP_CYCLE_DETECTED: 'SHOP_CYCLE_DETECTED',
+  SHOP_CROSS_OWNER: 'SHOP_CROSS_OWNER',
+  SHOP_PARENT_MUST_BE_MAIN: 'SHOP_PARENT_MUST_BE_MAIN',
+  SHOP_HAS_DEPENDENTS: 'SHOP_HAS_DEPENDENTS',
+  SHOP_DEPTH_EXCEEDED: 'SHOP_DEPTH_EXCEEDED',
+  PRODUCT_SKU_DUPLICATE: 'PRODUCT_SKU_DUPLICATE',
+  IMPORT_TOO_MANY_ROWS: 'IMPORT_TOO_MANY_ROWS',
+
+  // 存储
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE',
+  UPLOAD_NOT_CONFIRMED: 'UPLOAD_NOT_CONFIRMED',
+  /** 实际上传内容与签发时声明不一致 */
+  UPLOAD_CONTENT_MISMATCH: 'UPLOAD_CONTENT_MISMATCH',
+  ASSET_IN_USE: 'ASSET_IN_USE',
+
+  // 模型与任务
+  MODEL_NOT_AVAILABLE: 'MODEL_NOT_AVAILABLE',
+  MODEL_DISABLED: 'MODEL_DISABLED',
+  MODEL_CREDENTIAL_MISSING: 'MODEL_CREDENTIAL_MISSING',
+  MODEL_CAPABILITY_MISMATCH: 'MODEL_CAPABILITY_MISMATCH',
+  /** 后台设置为固定单模型,请求中指定的模型被忽略并拒绝 */
+  MODEL_SELECTION_LOCKED: 'MODEL_SELECTION_LOCKED',
+  PARAM_EXCEEDS_MODEL_LIMIT: 'PARAM_EXCEEDS_MODEL_LIMIT',
+  QUEUE_FULL: 'QUEUE_FULL',
+  USER_CONCURRENCY_LIMIT: 'USER_CONCURRENCY_LIMIT',
+  TASK_NOT_RETRYABLE: 'TASK_NOT_RETRYABLE',
+  /** 上游返回结果未知,需先核对再决定,禁止盲目重试 */
+  UPSTREAM_RESULT_UNKNOWN: 'UPSTREAM_RESULT_UNKNOWN',
+  UPSTREAM_ERROR: 'UPSTREAM_ERROR',
+  UPSTREAM_RATE_LIMITED: 'UPSTREAM_RATE_LIMITED',
+  UPSTREAM_TIMEOUT: 'UPSTREAM_TIMEOUT',
+
+  // 内容规则
+  CONTENT_BLOCKED_INPUT: 'CONTENT_BLOCKED_INPUT',
+  CONTENT_BLOCKED_OUTPUT: 'CONTENT_BLOCKED_OUTPUT',
+  CONTENT_STRUCTURE_INVALID: 'CONTENT_STRUCTURE_INVALID',
+
+  // 分享
+  SHARE_NOT_CONFIGURED: 'SHARE_NOT_CONFIGURED',
+  SHARE_PLATFORM_UNSUPPORTED: 'SHARE_PLATFORM_UNSUPPORTED',
+
+  // 供应商配置安全
+  PROVIDER_URL_NOT_ALLOWED: 'PROVIDER_URL_NOT_ALLOWED',
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+/** 统一错误响应体 */
+export interface ApiErrorBody {
+  error: {
+    code: ErrorCode | string;
+    /** 面向用户的中文提示,已脱敏 */
+    message: string;
+    /** 字段级校验错误 */
+    details?: Array<{ path: string; message: string }>;
+    /** 请求追踪 ID,便于对照服务端日志 */
+    requestId?: string;
+    /** 限流场景的建议重试间隔(秒) */
+    retryAfterSeconds?: number;
+  };
+}
+
+/** 错误码的默认中文提示。前端可覆盖为更贴合场景的文案。 */
+export const ERROR_MESSAGES: Partial<Record<ErrorCode, string>> = {
+  VALIDATION_FAILED: '提交的内容不符合要求,请检查后重试',
+  NOT_FOUND: '内容不存在或已被删除',
+  CONFLICT: '当前状态与操作冲突,请刷新后重试',
+  RATE_LIMITED: '操作过于频繁,请稍后再试',
+  INTERNAL_ERROR: '服务出现异常,请稍后重试',
+  SERVICE_UNAVAILABLE: '服务暂时不可用,请稍后重试',
+  UNAUTHENTICATED: '请先登录',
+  SESSION_EXPIRED: '登录状态已失效,请重新登录',
+  ACCOUNT_DISABLED: '账号已被禁用,请联系管理员',
+  INVALID_CREDENTIALS: '邮箱或密码不正确',
+  CSRF_FAILED: '请求校验失败,请刷新页面后重试',
+  FORBIDDEN: '没有执行该操作的权限',
+  ADMIN_REQUIRED: '需要管理员权限',
+  REAUTH_REQUIRED: '该操作需要重新验证身份',
+  REAUTH_INVALID: '身份验证已过期,请重新验证',
+  LAST_SUPER_ADMIN: '不能删除或禁用最后一个超级管理员',
+  NOT_RESOURCE_OWNER: '只能访问自己的数据',
+  POST_NOT_PUBLISHED: '该内容尚未发布',
+  POST_HIDDEN: '该内容已被管理员隐藏',
+  DRAFT_STALE: '草稿已有更新版本,已放弃本次较旧的保存',
+  SHOP_CYCLE_DETECTED: '店铺关系不能形成循环',
+  SHOP_CROSS_OWNER: '不能挂接到其他用户的店铺',
+  SHOP_PARENT_MUST_BE_MAIN: '只能挂接到主店铺',
+  SHOP_HAS_DEPENDENTS: '该主店铺下仍有子店铺、商品或凭据,请先迁移或处理',
+  SHOP_DEPTH_EXCEEDED: '店铺层级超出上限',
+  PRODUCT_SKU_DUPLICATE: '同一店铺下 SKU 不能重复',
+  QUOTA_EXCEEDED: '存储空间不足,请清理后重试',
+  FILE_TOO_LARGE: '文件超过大小上限',
+  UNSUPPORTED_MEDIA_TYPE: '不支持该文件类型',
+  UPLOAD_CONTENT_MISMATCH: '上传内容与申请信息不一致',
+  ASSET_IN_USE: '该文件仍被商品或帖子引用,无法删除',
+  MODEL_NOT_AVAILABLE: '所选模型当前不可用',
+  MODEL_DISABLED: '所选模型已被停用,请重新选择',
+  MODEL_CREDENTIAL_MISSING: '该模型尚未配置凭据,暂不可用',
+  MODEL_CAPABILITY_MISMATCH: '所选模型不支持该操作',
+  MODEL_SELECTION_LOCKED: '当前由后台指定固定模型,不接受自选模型',
+  PARAM_EXCEEDS_MODEL_LIMIT: '参数超出该模型的能力上限',
+  QUEUE_FULL: '任务队列已满,请稍后再提交',
+  USER_CONCURRENCY_LIMIT: '你有任务正在处理,请等待完成后再提交',
+  TASK_NOT_RETRYABLE: '该任务当前状态不支持重试',
+  UPSTREAM_RESULT_UNKNOWN: '上游结果待确认,系统正在核对,请勿重复提交',
+  UPSTREAM_ERROR: '模型服务返回错误',
+  UPSTREAM_RATE_LIMITED: '模型服务限流,系统将自动退避重试',
+  UPSTREAM_TIMEOUT: '模型服务响应超时',
+  CONTENT_BLOCKED_INPUT: '输入内容包含不允许的表达,请修改后重试',
+  CONTENT_BLOCKED_OUTPUT: '生成结果未通过内容检查,已拦截',
+  CONTENT_STRUCTURE_INVALID: '模型返回格式异常,请重试',
+  SHARE_NOT_CONFIGURED: '该分享渠道尚未配置,请联系管理员',
+  SHARE_PLATFORM_UNSUPPORTED: '当前环境不支持该分享方式,请使用二维码或复制链接',
+  PROVIDER_URL_NOT_ALLOWED: 'API 地址不在允许范围内',
+};

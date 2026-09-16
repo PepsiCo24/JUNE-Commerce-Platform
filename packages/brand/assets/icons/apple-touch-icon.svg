@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JUNE Apple Touch Icon — 180×180
+
+  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
+
+  iOS 的硬性约束与对应处理:
+    · 必须不透明。iOS 会把透明像素合成为黑色,所以底板是一块铺满
+      180×180 的深靛蓝实心矩形,且不做圆角 —— 圆角由 iOS 自己的遮罩负责,
+      自带圆角会在系统遮罩外沿留下一圈深色毛边。
+    · 四周留安全边距。图形墨迹 ×2.25 后为 108×108,落在 36..144,
+      上下左右各留 36(占 20%),iOS 的圆角遮罩与 App 资源库的圆形裁切都切不到图形。
+
+  配色为「深靛蓝底 + 青绿图形」:
+    · 底    indigo[900] #101426
+    · 图形  teal[400]  #56DECD,对底 11.3:1
+    · 连接点 purple[400] #9B8AFB,对底 6.5:1,唯一的点缀
+  这里使用单色青绿而不是主图标的「深靛蓝 J + 青绿 E」双色:
+  主屏图标会被系统缩到约 60px 并叠加高光,双色在这个尺寸下只会互相削弱;
+  J 与 E 的区分交给轮廓和紫色节点完成。
+
+  引用方式:link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png"
+  (iOS 只认 PNG,请先用 scripts/generate-rasters.mjs 把本文件栅格化。)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180"
+     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
+  <title>JUNE</title>
+
+  <!-- 不透明深靛蓝底板,满幅无圆角(圆角交给 iOS 遮罩) -->
+  <rect x="0" y="0" width="180" height="180" fill="#101426" />
+
+  <!-- 完整细节图形,×2.25 居中,四周安全边距 36 -->
+  <g transform="translate(18 18) scale(2.25)">
+    <g fill="none" stroke="#56DECD" stroke-width="8"
+       stroke-linecap="round" stroke-linejoin="round">
+      <path d="M52 12 H12 V51 H22" />
+      <path d="M12 31 H30" />
+      <path d="M52 12 V33 A18 18 0 0 1 34 51" />
+    </g>
+    <circle cx="28" cy="51" r="5" fill="#9B8AFB" />
+  </g>
+</svg>

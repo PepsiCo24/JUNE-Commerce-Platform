@@ -1,0 +1,38 @@
+{
+  "name": "june-commerce-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JUNE-Commerce-Platform - 电商创作与运营平台(社区 / 工作台 / 管理员站)",
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22.11.0"
+  },
+  "scripts": {
+    "build": "pnpm db:generate && pnpm -r --filter \"./packages/*\" build && pnpm -r --filter \"./apps/*\" build",
+    "build:packages": "pnpm db:generate && pnpm -r --filter \"./packages/*\" build",
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "dev:api": "pnpm --filter @june/api dev",
+    "dev:web": "pnpm --filter @june/web dev",
+    "dev:worker": "pnpm --filter @june/worker dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css}\"",
+    "db:generate": "pnpm --filter @june/db generate",
+    "db:migrate": "pnpm --filter @june/db migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @june/db migrate:deploy",
+    "db:seed": "pnpm --filter @june/db seed",
+    "db:studio": "pnpm --filter @june/db studio",
+    "db:reset": "pnpm --filter @june/db reset",
+    "admin:init": "pnpm --filter @june/db admin:init",
+    "brand:icons": "node scripts/generate-brand-rasters.mjs",
+    "loadtest:seed": "pnpm --filter @june/db loadtest:seed",
+    "clean": "pnpm -r exec rm -rf dist .next node_modules/.cache && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.2",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3"
+  }
+}

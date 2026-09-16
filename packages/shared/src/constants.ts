@@ -38,6 +38,10 @@ export type PostSort = (typeof POST_SORT_OPTIONS)[number];
 export const COMMUNITY_SEARCH_TYPES = ['all', 'posts', 'users'] as const;
 export type CommunitySearchType = (typeof COMMUNITY_SEARCH_TYPES)[number];
 
+/** 全站主题偏好:日间 / 夜间 / 跟随系统 */
+export const THEME_PREFERENCES = ['light', 'dark', 'system'] as const;
+export type ThemePreference = (typeof THEME_PREFERENCES)[number];
+
 /**
  * 热门排序规则(明确口径,前端提示文案与后端计算共用):
  *   hotScore = (likeCount * 3 + commentCount * 5 + min(viewCount, 5000) * 0.1 + 1)

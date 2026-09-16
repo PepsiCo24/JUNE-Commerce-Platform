@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 
 import { AppProviders } from '@/providers/app-providers';
 import { SessionWatcher } from '@/components/system/session-watcher';
+import { ThemeScript } from '@/components/system/theme-script';
 
 import './globals.css';
 
@@ -51,7 +52,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
-    <html lang="zh-CN" data-theme="dark" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body>
         {/* 键盘用户的跳转链接:聚焦时才显示 */}
         <a

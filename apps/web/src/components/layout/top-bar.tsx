@@ -8,6 +8,8 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
 
+import { ThemeToggle } from '@/components/system/theme-toggle';
+
 import { ConnectionStatus } from './connection-status';
 import { MobileNav } from './mobile-nav';
 import { MAIN_NAV, isActivePath } from './navigation';
@@ -62,7 +64,8 @@ export function TopBar({
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <ThemeToggle />
           <ConnectionStatus />
           <UserMenu user={user} theme={theme} />
         </div>

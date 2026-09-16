@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../constants';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, THEME_PREFERENCES } from '../constants';
 
 /**
  * 密码强度:长度 + 至少三类字符。规则前后端一致,后端为最终判定方。
@@ -56,10 +56,26 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export const updateProfileSchema = z.object({
   displayName: displayNameSchema.optional(),
   bio: z.string().trim().max(500).nullable().optional(),
+  location: z.string().trim().max(100).nullable().optional(),
+  website: z
+    .string()
+    .trim()
+    .max(200)
+    .nullable()
+    .optional()
+    .refine((value) => value === null || value === undefined || value === '' || /^https?:\/\/.+/i.test(value), {
+      message: '个人网站需以 http:// 或 https:// 开头',
+    }),
   /** 头像 Asset id;传 null 表示清除头像 */
   avatarAssetId: z.string().min(8).max(64).nullable().optional(),
+  theme: z.enum(THEME_PREFERENCES).optional(),
 });
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export const userPreferencesSchema = z.object({
+  theme: z.enum(THEME_PREFERENCES).default('system'),
+});
+export type UserPreferences = z.infer<typeof userPreferencesSchema>;
 
 /** 敏感操作前的重新验证:用当前密码换取一次性短时令牌 */
 export const reauthSchema = z.object({
@@ -74,6 +90,9 @@ export interface SessionUser {
   displayName: string;
   avatarUrl: string | null;
   bio: string | null;
+  location: string | null;
+  website: string | null;
+  theme: (typeof THEME_PREFERENCES)[number];
   status: 'ACTIVE' | 'DISABLED';
   roles: string[];
   permissions: string[];

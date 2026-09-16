@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ROLE_ADMIN, ROLE_LEVEL, ROLE_SUPER_ADMIN, ROLE_USER, SessionScope } from '@june/db';
 import {
   ERROR_CODES,
+  userPreferencesSchema,
   type ChangePasswordInput,
   type LoginInput,
   type RegisterInput,
@@ -206,7 +207,7 @@ export class AuthService {
   async updateProfile(user: AuthUser, input: UpdateProfileInput, meta: ClientMeta): Promise<SessionUser> {
     const before = await this.prisma.db.user.findUniqueOrThrow({
       where: { id: user.id },
-      select: { displayName: true, bio: true, avatarKey: true },
+      select: { displayName: true, bio: true, avatarKey: true, location: true, website: true, preferences: true },
     });
 
     let avatarKey = before.avatarKey;
@@ -229,11 +230,22 @@ export class AuthService {
       }
     }
 
+    const nextPreferences =
+      input.theme !== undefined
+        ? {
+            ...userPreferencesSchema.parse(before.preferences ?? {}),
+            theme: input.theme,
+          }
+        : undefined;
+
     await this.prisma.db.user.update({
       where: { id: user.id },
       data: {
         ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
         ...(input.bio !== undefined ? { bio: input.bio } : {}),
+        ...(input.location !== undefined ? { location: input.location } : {}),
+        ...(input.website !== undefined ? { website: input.website || null } : {}),
+        ...(nextPreferences !== undefined ? { preferences: nextPreferences } : {}),
         avatarKey,
       },
     });
@@ -246,6 +258,9 @@ export class AuthService {
       diff: this.audit.buildDiff(before as Record<string, unknown>, {
         displayName: input.displayName,
         bio: input.bio,
+        location: input.location,
+        website: input.website,
+        theme: input.theme,
         avatarKey,
       }),
       ip: meta.ip,
@@ -364,6 +379,9 @@ export class AuthService {
         displayName: true,
         avatarKey: true,
         bio: true,
+        location: true,
+        website: true,
+        preferences: true,
         status: true,
         createdAt: true,
         lastLoginAt: true,
@@ -373,6 +391,7 @@ export class AuthService {
 
     const roles = user.roles.map((r) => r.role.slug);
     const roleLevel = user.roles.reduce((max, r) => Math.max(max, r.role.level), 0);
+    const prefs = userPreferencesSchema.parse(user.preferences ?? {});
 
     return {
       id: user.id,
@@ -380,6 +399,9 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarKey ? await this.assetUrls.signObjectKey(user.avatarKey) : null,
       bio: user.bio,
+      location: user.location,
+      website: user.website,
+      theme: prefs.theme,
       status: user.status,
       roles,
       permissions: [...new Set(user.roles.flatMap((r) => r.role.permissions))],

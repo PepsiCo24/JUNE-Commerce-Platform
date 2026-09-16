@@ -77,6 +77,8 @@ export const communityKeys = {
   myPosts: (params: { status: MyPostStatus; q?: string }) => ['community', 'my-posts', params] as const,
   bookmarks: (params: { q?: string } = {}) => ['community', 'bookmarks', params] as const,
   users: (params: { q: string }) => ['community', 'users', params] as const,
+  userProfile: (id: string) => ['community', 'user-profile', id] as const,
+  userPosts: (id: string) => ['community', 'user-posts', id] as const,
   comments: (postId: string) => ['community', 'comments', postId] as const,
   draft: (draftId: string) => ['community', 'draft', draftId] as const,
   share: (slug: string) => ['community', 'share', slug] as const,

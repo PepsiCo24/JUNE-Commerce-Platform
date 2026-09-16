@@ -2,6 +2,7 @@
 
 import type { PostDetail } from '@june/shared';
 import { EyeOff, FileClock } from 'lucide-react';
+import Link from 'next/link';
 
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { CommentThread } from '../comments/comment-thread';
 import { usePostDetailSync } from '../hooks/use-community-sse';
 import { PostActions } from './post-actions';
 import { PostContent } from './post-content';
+import { PostToc } from './post-toc';
 
 /**
  * 帖子详情的客户端包装:点赞、分享、评论,以及管理员隐藏/删除后的 SSE 刷新。
@@ -32,7 +34,10 @@ export function PostDetailView({ post }: { post: PostDetail }): React.JSX.Elemen
     : null;
 
   return (
-    <article className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6">
+    <article className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 py-8 sm:px-6 lg:flex-row lg:items-start lg:gap-10">
+      <PostToc contentHtml={post.contentHtml} variant="sidebar" />
+      <div className="min-w-0 flex-1 flex max-w-[820px] flex-col gap-6 lg:mx-auto">
+        <PostToc contentHtml={post.contentHtml} variant="mobile" />
       {post.status === 'DRAFT' ? (
         <p className="flex items-center gap-2 rounded-md border border-border-default bg-surface px-3 py-2 text-sm text-fg-muted">
           <FileClock size={16} aria-hidden />
@@ -61,9 +66,13 @@ export function PostDetailView({ post }: { post: PostDetail }): React.JSX.Elemen
       <header className="flex flex-col gap-4">
         <h1 className="text-2xl font-semibold text-fg sm:text-3xl">{post.title}</h1>
         <div className="flex flex-wrap items-center gap-3">
-          <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={40} />
+          <Link href={`/community/users/${post.author.id}`}>
+            <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={40} />
+          </Link>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-fg">{post.author.displayName}</p>
+            <Link href={`/community/users/${post.author.id}`} className="text-sm font-medium text-fg hover:text-accent">
+              {post.author.displayName}
+            </Link>
             <p className="text-xs text-fg-subtle">
               {post.publishedAt ? `${formatRelativeTime(post.publishedAt)}发布` : '尚未发布'}
               {post.contentEditedAt ? ` · ${formatRelativeTime(post.contentEditedAt)}编辑` : ''}
@@ -87,6 +96,7 @@ export function PostDetailView({ post }: { post: PostDetail }): React.JSX.Elemen
       ) : (
         <p className="text-sm text-fg-muted">发布之后才能评论。</p>
       )}
+      </div>
     </article>
   );
 }

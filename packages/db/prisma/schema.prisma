@@ -35,6 +35,10 @@ model User {
   displayName  String
   avatarKey    String? // Asset 对象键(头像)
   bio          String?    @db.VarChar(500)
+  location     String?    @db.VarChar(100)
+  website      String?    @db.VarChar(200)
+  /// 用户界面偏好(JSON):theme / reducedMotion 等
+  preferences  Json       @default("{}")
   status       UserStatus @default(ACTIVE)
 
   // 密码/会话失效基准:修改密码或被禁用时前移,使旧会话立即失效

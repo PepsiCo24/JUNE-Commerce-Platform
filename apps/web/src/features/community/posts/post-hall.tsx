@@ -409,13 +409,17 @@ export function PostHall(): React.JSX.Element {
 }
 
 function UserResultRow({ user }: { user: CommunityUserSummary }): React.JSX.Element {
-  const postsHref = `/community?q=${encodeURIComponent(user.displayName)}&type=posts`;
+  const profileHref = `/community/users/${user.id}`;
 
   return (
     <div className="community-card-enter flex items-start gap-3 rounded-xl border border-border-default bg-bg-elevated p-4 shadow-sm">
-      <Avatar src={user.avatarUrl} name={user.displayName} size={40} />
+      <Link href={profileHref}>
+        <Avatar src={user.avatarUrl} name={user.displayName} size={40} />
+      </Link>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-fg">{user.displayName}</p>
+        <Link href={profileHref} className="truncate font-medium text-fg hover:text-accent">
+          {user.displayName}
+        </Link>
         {user.bio ? (
           <p className="mt-0.5 line-clamp-2 text-sm text-fg-muted">{user.bio}</p>
         ) : (
@@ -426,7 +430,7 @@ function UserResultRow({ user }: { user: CommunityUserSummary }): React.JSX.Elem
         </p>
       </div>
       <Button variant="secondary" size="sm" asChild>
-        <Link href={postsHref}>查看公开帖子</Link>
+        <Link href={profileHref}>查看主页</Link>
       </Button>
     </div>
   );

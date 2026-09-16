@@ -129,13 +129,14 @@ export class PostsService {
       status: PostStatus.PUBLISHED,
       deletedAt: null,
       ...(query.mine && viewer ? { authorId: viewer.id } : {}),
+      ...(query.authorId ? { authorId: query.authorId } : {}),
       ...this.buildSearchWhere(query.q),
     };
 
     const sortOrderBy = this.buildSortOrderBy(query.sort);
 
     const pinned =
-      searching || query.cursor
+      searching || query.cursor || query.authorId
         ? []
         : await this.prisma.db.post.findMany({
             where: { AND: [base, { isPinned: true }] },

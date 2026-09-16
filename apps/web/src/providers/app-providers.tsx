@@ -10,6 +10,7 @@ import { AuthProvider } from './auth-provider';
 import { PreferencesProvider } from './preferences-provider';
 import { QueryProvider } from './query-provider';
 import { SseProvider } from './sse-provider';
+import { ThemeProvider } from './theme-provider';
 
 /**
  * 全局 Provider 组合。顺序有依赖关系:
@@ -29,6 +30,7 @@ export function AppProviders({
     <PreferencesProvider>
       <QueryProvider>
         <AuthProvider initialUser={initialUser}>
+          <ThemeProvider>
           <SseProvider>
             <ConfirmProvider>
             {children}
@@ -48,6 +50,7 @@ export function AppProviders({
             />
             </ConfirmProvider>
           </SseProvider>
+          </ThemeProvider>
         </AuthProvider>
       </QueryProvider>
     </PreferencesProvider>

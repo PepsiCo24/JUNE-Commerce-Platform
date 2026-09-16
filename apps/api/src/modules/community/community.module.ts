@@ -14,6 +14,8 @@ import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
 import { ShareController } from './share.controller';
 import { ShareService } from './share.service';
+import { UserProfileController } from './user-profile.controller';
+import { UserProfileService } from './user-profile.service';
 import { UserSearchController } from './user-search.controller';
 
 /**
@@ -29,9 +31,11 @@ import { UserSearchController } from './user-search.controller';
     BookmarksController,
     ShareController,
     UserSearchController,
+    UserProfileController,
   ],
   providers: [
     PostsService,
+    UserProfileService,
     DraftsService,
     CommentsService,
     LikesService,

@@ -93,9 +93,17 @@ export function PostCard({
       )}
     >
       <div className="flex items-center gap-2">
-        <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={28} />
+        <Link href={`/community/users/${post.author.id}`} className="shrink-0 rounded-full" onClick={(e) => e.stopPropagation()}>
+          <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={28} />
+        </Link>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-fg">{post.author.displayName}</p>
+          <Link
+            href={`/community/users/${post.author.id}`}
+            className="truncate text-sm text-fg hover:text-accent"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {post.author.displayName}
+          </Link>
           <p className="text-xs text-fg-subtle">{timeLabel}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">

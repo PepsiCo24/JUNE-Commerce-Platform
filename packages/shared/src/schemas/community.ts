@@ -55,6 +55,8 @@ export const postListQuerySchema = cursorQuerySchema.extend({
   q: z.string().trim().max(120).optional(),
   /** 只看自己的帖子(我的创作) */
   mine: z.coerce.boolean().default(false),
+  /** 指定作者的公开帖子(个人主页) */
+  authorId: idSchema.optional(),
 });
 export type PostListQuery = z.infer<typeof postListQuerySchema>;
 
@@ -88,6 +90,21 @@ export interface CommunityUserSummary {
   bio: string | null;
   /** 已发布公开帖子数 */
   publishedPostCount: number;
+}
+
+/** 公开个人主页(不含邮箱等私密字段) */
+export interface PublicUserProfile {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  joinedAt: string;
+  stats: {
+    publishedPostCount: number;
+    totalLikeCount: number;
+  };
 }
 
 export interface PostListItem {

@@ -10,26 +10,9 @@ import {
   type PostDetail,
 } from '@june/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Image } from '@tiptap/extension-image';
-import { Link } from '@tiptap/extension-link';
-import { Placeholder } from '@tiptap/extension-placeholder';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import {
-  Bold,
-  Eye,
-  Heading2,
-  Heading3,
-  ImagePlus,
-  Italic,
-  Link as LinkIcon,
-  List,
-  ListOrdered,
-  Quote,
-  Redo2,
-  Strikethrough,
-  Undo2,
-} from 'lucide-react';
+import { ArrowLeft, Eye, ImagePlus } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -49,6 +32,7 @@ import { useDraftAutosave, type DraftSnapshot } from '../hooks/use-draft-autosav
 import { assetDisplayUrl, usePostImages } from '../hooks/use-post-images';
 import { PostContent } from '../posts/post-content';
 import { isEmptyPostContent, postDetailPath } from '../utils';
+import { buildEditorExtensions, countEditorStats, EditorToolbar } from './editor-toolbar';
 
 export type PostEditorMode = 'create' | 'edit';
 
@@ -108,29 +92,41 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [2, 3] },
-        link: false,
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        defaultProtocol: 'https',
-        HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
-      }),
-      Image.configure({ inline: false, allowBase64: false }),
-      Placeholder.configure({ placeholder: '写下你想分享的内容…' }),
-    ],
+    extensions: buildEditorExtensions(),
     content: initialHtml || undefined,
     editorProps: {
       attributes: {
-        class: 'june-prose min-h-80 outline-none',
+        class: 'june-prose june-editor-prose min-h-[480px] outline-none',
+      },
+      handleDOMEvents: {
+        drop: (_view, event) => {
+          const files = event.dataTransfer?.files;
+          if (files && files.length > 0) {
+            event.preventDefault();
+            images.addFiles(files);
+            return true;
+          }
+          return false;
+        },
+        paste: (_view, event) => {
+          const files = event.clipboardData?.files;
+          if (files && files.length > 0) {
+            const imageFiles = [...files].filter((f) => f.type.startsWith('image/'));
+            if (imageFiles.length > 0) {
+              event.preventDefault();
+              images.addFiles(imageFiles);
+              return true;
+            }
+          }
+          return false;
+        },
       },
     },
     onUpdate: ({ editor: instance }) => onEditorUpdate(instance),
     onCreate: ({ editor: instance }) => onEditorUpdate(instance),
   });
+
+  const stats = useMemo(() => countEditorStats(html), [html]);
 
   const snapshot: DraftSnapshot = useMemo(
     () => ({
@@ -246,6 +242,14 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
     else toast.error(autosave.error ?? '草稿保存失败');
   };
 
+  useEffect(() => {
+    const onSaveDraft = (): void => {
+      void saveDraftNow();
+    };
+    window.addEventListener('june:editor-save-draft', onSaveDraft);
+    return () => window.removeEventListener('june:editor-save-draft', onSaveDraft);
+  });
+
   const previewImages: PostDetail['images'] = images.images.map((asset) => ({
     assetId: asset.id,
     url: asset.url,
@@ -254,118 +258,141 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
     height: asset.height,
   }));
 
+  const backHref = mode === 'edit' && props.slug ? postDetailPath(props.slug) : '/community';
+
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {mode === 'create' ? (
-          <SaveStatus
-            state={autosave.state}
-            savedAt={autosave.savedAt}
-            error={autosave.error}
-            onRetry={autosave.retry}
-          />
-        ) : (
-          <p className="text-xs text-fg-muted">编辑已发布内容不会自动保存,请确认后点击「更新」。</p>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={preview ? 'primary' : 'outline'}
-            size="sm"
-            iconLeft={<Eye size={16} />}
-            onClick={() => setPreview((value) => !value)}
-          >
-            {preview ? '继续编辑' : '预览'}
-          </Button>
-          {mode === 'create' ? (
-            <Button variant="secondary" size="sm" onClick={() => void saveDraftNow()} disabled={!hasContent}>
-              存草稿
+    <div className="flex min-h-dvh flex-col bg-community-feed">
+      <header className="sticky top-0 z-50 border-b border-border-default bg-bg-elevated/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[920px] flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+          <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
+            <ArrowLeft size={16} aria-hidden />
+            返回
+          </Link>
+          <div className="min-w-0 flex-1">
+            {mode === 'create' ? (
+              <SaveStatus
+                state={autosave.state}
+                savedAt={autosave.savedAt}
+                error={autosave.error}
+                onRetry={autosave.retry}
+              />
+            ) : (
+              <p className="text-xs text-fg-muted">编辑已发布内容不会自动保存,请确认后点击「更新发布」。</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={preview ? 'primary' : 'outline'}
+              size="sm"
+              iconLeft={<Eye size={16} />}
+              onClick={() => setPreview((value) => !value)}
+            >
+              {preview ? '继续编辑' : '预览'}
             </Button>
-          ) : null}
-          <Button
-            size="sm"
-            loading={publishing}
-            onClick={() => void publish()}
-            disabled={publishing || images.uploading}
-          >
-            {mode === 'edit' ? '更新' : '发布'}
-          </Button>
-        </div>
-      </div>
-
-      {preview ? (
-        <div className="rounded-lg border border-border-default bg-surface p-4 sm:p-6">
-          <h2 className="text-2xl font-semibold text-fg">{title.trim() || '(无标题)'}</h2>
-          <div className="mt-6">
-            {isEmptyPostContent(html) ? (
-              <p className="text-sm text-fg-muted">正文还是空的。</p>
-            ) : (
-              <PostContent contentHtml={html} images={previewImages} title={title || '预览'} />
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-          <Field
-            label="标题"
-            htmlFor="post-title"
-            required
-            error={fieldErrors.title ?? fieldErrors['title'] ?? null}
-            addon={<CharCounter value={title} max={POST_TITLE_MAX} />}
-          >
-            <Input
-              id="post-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={POST_TITLE_MAX}
-              placeholder="给这篇内容起个标题"
-            />
-          </Field>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium text-fg">正文</p>
-              <p className="text-xs text-fg-subtle">最多 {POST_MAX_IMAGES} 张图片</p>
-            </div>
-            <EditorToolbar
-              editor={editor}
-              onAddImage={pickFiles}
-              onAddLink={() => {
-                const current = editor?.getAttributes('link')['href'];
-                setLinkUrl(typeof current === 'string' && current.length > 0 ? current : 'https://');
-                setLinkOpen(true);
-              }}
-            />
-            {editor ? (
-              <div
-                className={cn(
-                  'rounded-lg border border-border-default bg-surface px-3 py-3 sm:px-4',
-                  '[&_.is-editor-empty:first-child::before]:pointer-events-none',
-                  '[&_.is-editor-empty:first-child::before]:float-left',
-                  '[&_.is-editor-empty:first-child::before]:h-0',
-                  '[&_.is-editor-empty:first-child::before]:text-fg-subtle',
-                  '[&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]',
-                )}
-              >
-                <EditorContent editor={editor} />
-              </div>
-            ) : (
-              <LoadingState message="正在加载编辑器" className="min-h-40" />
-            )}
-            {fieldErrors.contentHtml ? (
-              <p role="alert" className="text-xs text-state-danger-fg">
-                {fieldErrors.contentHtml}
-              </p>
+            {mode === 'create' ? (
+              <Button variant="secondary" size="sm" onClick={() => void saveDraftNow()} disabled={!hasContent}>
+                存草稿
+              </Button>
             ) : null}
+            <Button
+              size="sm"
+              loading={publishing}
+              onClick={() => void publish()}
+              disabled={publishing || images.uploading}
+            >
+              {mode === 'edit' ? '更新发布' : '发布'}
+            </Button>
           </div>
+        </div>
+      </header>
 
-          <ImageGallery images={images} onPick={pickFiles} />
-          <UploadProgressList
-            items={images.uploads}
-            onRemove={images.removeUpload}
-            onRetry={images.retryUpload}
-          />
-        </>
-      )}
+      <div className="mx-auto w-full max-w-[920px] flex-1 px-4 py-4 sm:px-6 sm:py-6">
+        {preview ? (
+          <div className="june-editor-paper rounded-xl border border-border-default p-6 sm:p-10">
+            <h2 className="text-2xl font-semibold text-fg">{title.trim() || '(无标题)'}</h2>
+            <div className="mt-6">
+              {isEmptyPostContent(html) ? (
+                <p className="text-sm text-fg-muted">正文还是空的。</p>
+              ) : (
+                <PostContent contentHtml={html} images={previewImages} title={title || '预览'} />
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            {!preview ? (
+              <EditorToolbar
+                editor={editor}
+                onAddImage={pickFiles}
+                onAddLink={() => {
+                  const current = editor?.getAttributes('link')['href'];
+                  setLinkUrl(typeof current === 'string' && current.length > 0 ? current : 'https://');
+                  setLinkOpen(true);
+                }}
+                className="mb-4"
+              />
+            ) : null}
+
+            <div className="june-editor-paper mx-auto max-w-[860px] rounded-xl border border-border-default shadow-sm">
+              <div className="border-b border-border-default px-6 py-5 sm:px-12 sm:py-8">
+                <input
+                  id="post-title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  maxLength={POST_TITLE_MAX}
+                  placeholder="文档标题"
+                  className="w-full border-0 bg-transparent text-2xl font-semibold text-fg outline-none placeholder:text-fg-subtle sm:text-3xl"
+                />
+                {fieldErrors.title ? (
+                  <p role="alert" className="mt-1 text-xs text-state-danger-fg">
+                    {fieldErrors.title}
+                  </p>
+                ) : null}
+                <p className="mt-1 text-xs text-fg-subtle">
+                  <CharCounter value={title} max={POST_TITLE_MAX} />
+                </p>
+              </div>
+
+              <div className="px-6 py-6 sm:px-12 sm:py-10">
+                {editor ? (
+                  <div
+                    className={cn(
+                      '[&_.is-editor-empty:first-child::before]:pointer-events-none',
+                      '[&_.is-editor-empty:first-child::before]:float-left',
+                      '[&_.is-editor-empty:first-child::before]:h-0',
+                      '[&_.is-editor-empty:first-child::before]:text-fg-subtle',
+                      '[&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]',
+                    )}
+                  >
+                    <EditorContent editor={editor} />
+                  </div>
+                ) : (
+                  <LoadingState message="正在加载编辑器" className="min-h-40" />
+                )}
+                {fieldErrors.contentHtml ? (
+                  <p role="alert" className="mt-2 text-xs text-state-danger-fg">
+                    {fieldErrors.contentHtml}
+                  </p>
+                ) : null}
+              </div>
+
+              <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border-default px-6 py-3 text-xs text-fg-subtle sm:px-12">
+                <span>{stats.chars} 字 · 约 {stats.readingMinutes} 分钟阅读</span>
+                <span>最多 {POST_MAX_IMAGES} 张图片</span>
+              </footer>
+            </div>
+
+            <div className="mx-auto mt-6 max-w-[860px]">
+              <ImageGallery images={images} onPick={pickFiles} />
+              <UploadProgressList
+                items={images.uploads}
+                onRemove={images.removeUpload}
+                onRetry={images.retryUpload}
+              />
+            </div>
+          </>
+        )}
+      </div>
 
       <input
         ref={fileInputRef}
@@ -405,132 +432,6 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
         </Field>
       </Dialog>
     </div>
-  );
-}
-
-function EditorToolbar({
-  editor,
-  onAddImage,
-  onAddLink,
-}: {
-  editor: Editor | null;
-  onAddImage: () => void;
-  onAddLink: () => void;
-}): React.JSX.Element {
-  const disabled = !editor;
-
-  return (
-    <div className="flex flex-wrap gap-1 rounded-md border border-border-default bg-bg-elevated p-1">
-      <ToolbarButton
-        label="加粗"
-        active={editor?.isActive('bold') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBold().run()}
-        icon={<Bold size={16} />}
-      />
-      <ToolbarButton
-        label="斜体"
-        active={editor?.isActive('italic') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleItalic().run()}
-        icon={<Italic size={16} />}
-      />
-      <ToolbarButton
-        label="删除线"
-        active={editor?.isActive('strike') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleStrike().run()}
-        icon={<Strikethrough size={16} />}
-      />
-      <ToolbarButton
-        label="二级标题"
-        active={editor?.isActive('heading', { level: 2 }) ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-        icon={<Heading2 size={16} />}
-      />
-      <ToolbarButton
-        label="三级标题"
-        active={editor?.isActive('heading', { level: 3 }) ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
-        icon={<Heading3 size={16} />}
-      />
-      <ToolbarButton
-        label="无序列表"
-        active={editor?.isActive('bulletList') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBulletList().run()}
-        icon={<List size={16} />}
-      />
-      <ToolbarButton
-        label="有序列表"
-        active={editor?.isActive('orderedList') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-        icon={<ListOrdered size={16} />}
-      />
-      <ToolbarButton
-        label="引用"
-        active={editor?.isActive('blockquote') ?? false}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-        icon={<Quote size={16} />}
-      />
-      <ToolbarButton
-        label="链接"
-        active={editor?.isActive('link') ?? false}
-        disabled={disabled}
-        onClick={onAddLink}
-        icon={<LinkIcon size={16} />}
-      />
-      <ToolbarButton label="插入图片" active={false} disabled={disabled} onClick={onAddImage} icon={<ImagePlus size={16} />} />
-      <ToolbarButton
-        label="撤销"
-        active={false}
-        disabled={disabled || !editor?.can().undo()}
-        onClick={() => editor?.chain().focus().undo().run()}
-        icon={<Undo2 size={16} />}
-      />
-      <ToolbarButton
-        label="重做"
-        active={false}
-        disabled={disabled || !editor?.can().redo()}
-        onClick={() => editor?.chain().focus().redo().run()}
-        icon={<Redo2 size={16} />}
-      />
-    </div>
-  );
-}
-
-function ToolbarButton({
-  label,
-  icon,
-  active,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  active: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'inline-flex size-8 items-center justify-center rounded-sm text-fg-muted transition-colors',
-        'hover:bg-surface-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40',
-        active && 'bg-accent-surface text-accent',
-      )}
-    >
-      {icon}
-    </button>
   );
 }
 

@@ -25,6 +25,7 @@ export const POST_ALLOWED_TAGS = [
   'em',
   'u',
   's',
+  'h1',
   'h2',
   'h3',
   'blockquote',
@@ -38,7 +39,29 @@ export const POST_ALLOWED_TAGS = [
   'code',
   'pre',
   'hr',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'mark',
+  'span',
 ] as const;
+
+/** 仅允许 color / background-color / text-align,防止注入其它 CSS */
+const ALLOWED_INLINE_STYLE = /^(?:color|background-color|text-align)\s*:\s*[^;]+;?\s*$/i;
+
+function sanitizeInlineStyle(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const parts = raw
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => (part.endsWith(';') ? part : `${part};`));
+  const safe = parts.filter((part) => ALLOWED_INLINE_STYLE.test(part));
+  return safe.length > 0 ? safe.join(' ') : undefined;
+}
 
 /** 外链一律加上这三个值:防 tabnabbing + 不传递权重 */
 export const LINK_FORCED_REL = 'noopener noreferrer nofollow';
@@ -85,6 +108,18 @@ export function isPlatformImageSrc(src: string, allowedImageKeys: string[]): boo
   return allowedImageKeys.some((key) => key.length > 0 && pathname.includes(key));
 }
 
+function styleTag(tagName: string) {
+  return (_name: string, attribs: Record<string, string>) => {
+    const next: Record<string, string> = {};
+    const style = sanitizeInlineStyle(attribs.style);
+    if (style) next.style = style;
+    if (attribs['data-color']) next['data-color'] = attribs['data-color'];
+    if (attribs['data-type']) next['data-type'] = attribs['data-type'];
+    if (attribs['data-checked']) next['data-checked'] = attribs['data-checked'];
+    return { tagName, attribs: next };
+  };
+}
+
 function isSafeLinkHref(href: string): boolean {
   if (!href) return false;
   try {
@@ -107,7 +142,17 @@ export function sanitizePostHtml(
     allowedTags: [...POST_ALLOWED_TAGS],
     allowedAttributes: {
       a: ['href', 'title', 'target', 'rel'],
-      img: ['src', 'alt', 'width', 'height'],
+      img: ['src', 'alt', 'width', 'height', 'data-align'],
+      p: ['style'],
+      h1: ['style'],
+      h2: ['style'],
+      h3: ['style'],
+      span: ['style'],
+      mark: ['style', 'data-color'],
+      ul: ['data-type'],
+      li: ['data-type', 'data-checked'],
+      th: ['colspan', 'rowspan'],
+      td: ['colspan', 'rowspan'],
     },
     allowedSchemes: ['http', 'https'],
     allowedSchemesByTag: { a: ['http', 'https'], img: ['http', 'https'] },
@@ -142,8 +187,15 @@ export function sanitizePostHtml(
         if (attribs.alt) next.alt = attribs.alt;
         if (attribs.width) next.width = attribs.width;
         if (attribs.height) next.height = attribs.height;
+        if (attribs['data-align']) next['data-align'] = attribs['data-align'];
         return { tagName: 'img', attribs: next };
       },
+      p: styleTag('p'),
+      h1: styleTag('h1'),
+      h2: styleTag('h2'),
+      h3: styleTag('h3'),
+      span: styleTag('span'),
+      mark: styleTag('mark'),
     },
   });
 

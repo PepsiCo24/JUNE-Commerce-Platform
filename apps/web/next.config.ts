@@ -39,6 +39,8 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
+  // 关掉左下角 Next.js 开发指示器(N 按钮);编译/运行错误仍会弹出
+  devIndicators: false,
 
   // 允许从 workspace 包直接引入 TS/TSX 源码(@june/brand 导出 React 组件)
   transpilePackages: ['@june/brand', '@june/shared'],

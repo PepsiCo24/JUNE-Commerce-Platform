@@ -517,6 +517,41 @@ export class ContentRuleService {
     return `${USER_INPUT_BEGIN}\n${sanitized}\n${USER_INPUT_END}`;
   }
 
+  /** 标题生成专用系统提示词(只输出标题数组,不含正文) */
+  async buildTitleSystemPrompt(platform: string, titleCount: number, maxTitleLength: number): Promise<string> {
+    const base = await this.buildSystemPrompt(platform, 'professional');
+    return [
+      base.replace('撰写商品标题与正文', '撰写商品营销标题'),
+      `【标题任务】只生成 ${titleCount} 条候选标题,不要生成正文。`,
+      `每条标题长度不超过 ${maxTitleLength} 个字符(按 Unicode 字符计),语义完整,禁止生硬截断。`,
+      '输出 JSON 结构为 {"titles":[{"text":"标题","charCount":12}]}。',
+    ].join('\n\n');
+  }
+
+  getTitleStructuredOutputSchema(titleCount: number, maxTitleLength: number): Record<string, unknown> {
+    return {
+      type: 'object',
+      additionalProperties: false,
+      required: ['titles'],
+      properties: {
+        titles: {
+          type: 'array',
+          minItems: 1,
+          maxItems: titleCount,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['text', 'charCount'],
+            properties: {
+              text: { type: 'string', minLength: 1, maxLength: 300 },
+              charCount: { type: 'integer', minimum: 1, maximum: maxTitleLength },
+            },
+          },
+        },
+      },
+    };
+  }
+
   /** 给模型使用的结构化输出 JSON Schema,对应 copyResultPayloadSchema */
   getStructuredOutputSchema(): Record<string, unknown> {
     return {

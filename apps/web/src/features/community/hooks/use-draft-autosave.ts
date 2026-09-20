@@ -15,6 +15,7 @@ export interface DraftSnapshot {
   contentJson: unknown;
   coverAssetId: string | null;
   imageAssetIds: string[];
+  category: import('@june/shared').PostCategory;
 }
 
 export interface DraftAutosaveController {
@@ -38,6 +39,7 @@ function serialize(snapshot: DraftSnapshot): string {
     contentHtml: snapshot.contentHtml,
     coverAssetId: snapshot.coverAssetId,
     imageAssetIds: snapshot.imageAssetIds,
+    category: snapshot.category,
   });
 }
 
@@ -166,6 +168,7 @@ export function useDraftAutosave(params: {
           contentJson: current.contentJson,
           coverAssetId: current.coverAssetId,
           imageAssetIds: current.imageAssetIds,
+          category: current.category,
           revision,
         },
         controller.signal,

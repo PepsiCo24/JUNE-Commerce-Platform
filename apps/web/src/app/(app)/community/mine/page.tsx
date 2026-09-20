@@ -4,13 +4,14 @@ import Link from 'next/link';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
+import { CommunityFeedFrame } from '@/features/community/layout/community-feed-frame';
 import { MineList } from '@/features/community/posts/mine-list';
 
 export const metadata: Metadata = { title: pageTitle('我的内容') };
 
 export default function CommunityMinePage(): React.JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-[90rem] px-4 py-8 sm:px-6">
+    <CommunityFeedFrame>
       <PageHeader
         title="我的内容"
         description="管理已发布、已隐藏和草稿。删除前会再次确认。"
@@ -32,6 +33,6 @@ export default function CommunityMinePage(): React.JSX.Element {
       <div className="mt-6">
         <MineList />
       </div>
-    </div>
+    </CommunityFeedFrame>
   );
 }

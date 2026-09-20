@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma, ShopCredential } from '@june/db';
 import {
+  ERROR_CODES,
   PASSWORD_DISPLAY_MASK,
+  PRIMARY_LOGIN_PURPOSE,
   type CredentialCreateInput,
   type CredentialRevealResponse,
   type CredentialSummary,
@@ -78,7 +80,7 @@ export class CredentialsService {
     const [rows, total] = await Promise.all([
       this.prisma.db.shopCredential.findMany({
         where,
-        orderBy: [{ createdAt: 'desc' }],
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
@@ -111,6 +113,13 @@ export class CredentialsService {
   ): Promise<CredentialSummary> {
     const shop = await this.shops.mustOwn(user, shopId);
 
+    if (input.purpose.trim() === PRIMARY_LOGIN_PURPOSE) {
+      throw AppException.badRequest(
+        ERROR_CODES.VALIDATION_FAILED,
+        '主要登录账号请在店铺信息中维护,勿在此重复创建',
+      );
+    }
+
     const id = nanoid(CREDENTIAL_ID_LENGTH);
     const sealed = this.crypto.seal(input.password, 'credential', credentialAad(id));
 
@@ -123,6 +132,7 @@ export class CredentialsService {
         account: input.account,
         loginUrl: input.loginUrl ?? null,
         note: input.note ?? null,
+        isPrimary: false,
         passwordCipher: sealed.cipher,
         passwordIv: sealed.iv,
         passwordTag: sealed.tag,
@@ -155,6 +165,19 @@ export class CredentialsService {
     const shop = await this.shops.mustOwn(user, shopId);
     const before = await this.mustOwnCredential(user, shop.id, id);
 
+    if (before.isPrimary && input.purpose !== undefined && input.purpose.trim() !== PRIMARY_LOGIN_PURPOSE) {
+      throw AppException.badRequest(
+        ERROR_CODES.VALIDATION_FAILED,
+        '主要登录账号的用途不可修改,请在店铺信息中维护',
+      );
+    }
+    if (!before.isPrimary && input.purpose?.trim() === PRIMARY_LOGIN_PURPOSE) {
+      throw AppException.badRequest(
+        ERROR_CODES.VALIDATION_FAILED,
+        '主要登录账号请在店铺信息中维护',
+      );
+    }
+
     const data: Prisma.ShopCredentialUncheckedUpdateInput = {
       ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
       ...(input.account !== undefined ? { account: input.account } : {}),
@@ -172,7 +195,17 @@ export class CredentialsService {
       data.passwordUpdatedAt = new Date();
     }
 
-    const updated = await this.prisma.db.shopCredential.update({ where: { id: before.id }, data });
+    const updated = await this.prisma.db.$transaction(async (tx) => {
+      const row = await tx.shopCredential.update({ where: { id: before.id }, data });
+      // 主要凭据账号变更时回写店铺平台账号,避免两边漂移
+      if (before.isPrimary && input.account !== undefined) {
+        await tx.shop.update({
+          where: { id: shop.id },
+          data: { platformAccount: input.account },
+        });
+      }
+      return row;
+    });
 
     await this.audit.record({
       actor: user,
@@ -330,6 +363,7 @@ export class CredentialsService {
       account: row.account,
       loginUrl: row.loginUrl,
       note: row.note,
+      isPrimary: row.isPrimary,
       // 固定掩码:既不返回明文,也不通过长度泄漏信息
       passwordMask: PASSWORD_DISPLAY_MASK,
       passwordUpdatedAt: row.passwordUpdatedAt.toISOString(),

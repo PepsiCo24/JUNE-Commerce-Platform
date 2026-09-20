@@ -130,7 +130,7 @@ export function CopyStudio(): React.JSX.Element {
       targetPlatform,
       style,
       prompt: prompt || undefined,
-      titleCount,
+      titleCount: 1,
       idempotencyKey: key,
     };
     if (!locked && model.id) body.modelConfigId = model.id;
@@ -223,11 +223,11 @@ export function CopyStudio(): React.JSX.Element {
   }));
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <section className="w-full shrink-0 space-y-4 lg:w-[22rem] xl:w-[24rem]">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <section className="space-y-4">
         <PageHeader
-          title="文案"
-          description="选择商品或手工填写资料,生成标题与正文。未通过内容检查的结果不会当作成功展示。"
+          title="文案生成"
+          description="专注商品正文生成。标题请使用独立的「标题生成」功能。"
           actions={
             <Button variant="ghost" size="sm" asChild>
               <Link href="/workbench/copy/history">历史记录</Link>
@@ -316,17 +316,6 @@ export function CopyStudio(): React.JSX.Element {
         <Field label="附加提示词" htmlFor="copy-prompt" addon={<CharCounter value={prompt} max={PROMPT_MAX} />}>
           <Textarea id="copy-prompt" rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         </Field>
-        <Field label={`标题数量 ${titleCount}`} htmlFor="copy-title-count">
-          <Input
-            id="copy-title-count"
-            type="number"
-            min={1}
-            max={10}
-            value={titleCount}
-            onChange={(event) => setTitleCount(Number(event.target.value))}
-          />
-        </Field>
-
         <Button
           fullWidth
           loading={submitting}
@@ -338,7 +327,7 @@ export function CopyStudio(): React.JSX.Element {
         </Button>
       </section>
 
-      <section className="min-w-0 flex-1 space-y-4">
+      <section className="space-y-4 border-t border-border-default pt-6">
         {!taskId ? (
           <EmptyState icon={<PenLine size={22} />} title="等待提交" description="提交后会显示处理状态与检查结果。" />
         ) : taskQuery.isPending ? (

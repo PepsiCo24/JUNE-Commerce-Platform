@@ -13,7 +13,7 @@ import { nanoid } from 'nanoid';
 import type { AuthUser } from '../../common/auth/auth-context';
 import { AppException } from '../../common/errors/app-exception';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { encodeTimeCursor, parseCursor, type TimeCursor } from './community.util';
+import { encodeTimeCursor, fromPrismaCategory, parseCursor, toPrismaCategory, type TimeCursor } from './community.util';
 import { PostsService } from './posts.service';
 
 /**
@@ -37,6 +37,7 @@ const DRAFT_SELECT = {
   contentJson: true,
   coverAssetId: true,
   imageAssetIds: true,
+  category: true,
   draftRevision: true,
   updatedAt: true,
 } satisfies Prisma.PostSelect;
@@ -107,6 +108,7 @@ export class DraftsService {
             : (input.contentJson as Prisma.InputJsonValue),
         coverAssetId: prepared.coverAssetId,
         imageAssetIds: prepared.imageAssetIds,
+        category: toPrismaCategory(input.category),
         draftRevision: input.revision,
       },
     });
@@ -199,6 +201,7 @@ export class DraftsService {
       contentJson: draft.contentJson ?? undefined,
       coverAssetId: draft.coverAssetId,
       imageAssetIds: draft.imageAssetIds,
+      category: fromPrismaCategory(draft.category),
     });
     if (!parsed.success) {
       throw AppException.validation(
@@ -238,6 +241,7 @@ export class DraftsService {
       contentJson: row.contentJson ?? null,
       coverAssetId: row.coverAssetId,
       imageAssetIds: row.imageAssetIds,
+      category: fromPrismaCategory(row.category),
       revision: row.draftRevision,
       updatedAt: row.updatedAt.toISOString(),
     };

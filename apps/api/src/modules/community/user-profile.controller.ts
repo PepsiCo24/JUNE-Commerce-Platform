@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import {
-  cursorQuerySchema,
-  type CursorResult,
+  pageQuerySchema,
+  type PageResult,
   type PostListItem,
   type PublicUserProfile,
 } from '@june/shared';
@@ -11,7 +11,7 @@ import { Public } from '../../common/auth/auth.decorators';
 import { zodQuery } from '../../common/validation/zod-body.pipe';
 import { UserProfileService } from './user-profile.service';
 
-type UserPostsQuery = z.infer<typeof cursorQuerySchema>;
+type UserPostsQuery = z.infer<typeof pageQuerySchema>;
 
 /**
  * 公开个人主页。不含邮箱、草稿、收藏等私密信息。
@@ -30,8 +30,8 @@ export class UserProfileController {
   @Get(':id/posts')
   async listPosts(
     @Param('id') id: string,
-    @Query(zodQuery(cursorQuerySchema)) query: UserPostsQuery,
-  ): Promise<CursorResult<PostListItem>> {
+    @Query(zodQuery(pageQuerySchema)) query: UserPostsQuery,
+  ): Promise<PageResult<PostListItem>> {
     return this.profiles.listPublicPosts(id, query);
   }
 }

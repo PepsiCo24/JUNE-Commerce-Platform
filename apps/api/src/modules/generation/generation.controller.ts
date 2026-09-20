@@ -4,11 +4,13 @@ import {
   copyGenerateSchema,
   idSchema,
   imageGenerateSchema,
+  titleGenerateSchema,
   imageRetrySchema,
   saveResultToPostSchema,
   saveResultToProductSchema,
   taskListQuerySchema,
   type CopyGenerateInput,
+  type TitleGenerateInput,
   type CursorResult,
   type GenerationTaskView,
   type ImageGenerateInput,
@@ -78,6 +80,17 @@ export class GenerationController {
     @Body(zodBody(copyGenerateSchema)) dto: CopyGenerateInput,
   ): Promise<TaskSubmitResponse> {
     return this.generation.submitCopy(user, dto);
+  }
+
+  /** 提交标题生成任务 */
+  @Post('title')
+  @HttpCode(202)
+  @Throttle(aiThrottle)
+  async submitTitle(
+    @CurrentUser() user: AuthUser,
+    @Body(zodBody(titleGenerateSchema)) dto: TitleGenerateInput,
+  ): Promise<TaskSubmitResponse> {
+    return this.generation.submitTitle(user, dto);
   }
 
   @Get('tasks')

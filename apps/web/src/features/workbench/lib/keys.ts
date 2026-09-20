@@ -22,12 +22,14 @@ export const workbenchKeys = {
 
   productList: (params: object) => ['workbench', 'products', 'list', params] as const,
   productDetail: (productId: string) => ['workbench', 'products', 'detail', productId] as const,
-  productOptions: (q: string) => ['workbench', 'products', 'options', q] as const,
+  productOptions: (q: string, shopId?: string) => ['workbench', 'products', 'options', q, shopId ?? ''] as const,
 
   importJob: (jobId: string) => ['workbench', 'products', 'import', jobId] as const,
 
   credentialList: (shopId: string, params: Record<string, unknown>) =>
     ['workbench', 'credentials', shopId, params] as const,
+
+  alipayList: (params: Record<string, unknown>) => ['workbench', 'alipay', 'list', params] as const,
 
   storageUsage: () => ['workbench', 'storage', 'usage'] as const,
 } as const;

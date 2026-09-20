@@ -76,7 +76,9 @@ export function OverviewDashboard(): React.JSX.Element {
                   href={
                     task.type === 'TEXT_COPY'
                       ? `/workbench/copy?taskId=${task.id}`
-                      : `/workbench/image?taskId=${task.id}`
+                      : task.type === 'TEXT_TITLE'
+                        ? `/workbench/title?taskId=${task.id}`
+                        : `/workbench/image?taskId=${task.id}`
                   }
                   className="flex items-center justify-between gap-3 rounded-lg border border-border-default bg-surface px-3 py-2 hover:bg-surface-hover"
                 >

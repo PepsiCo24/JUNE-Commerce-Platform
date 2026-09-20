@@ -13,8 +13,7 @@ import './globals.css';
  * 说明:
  *  - 页面标题统一为「页面名称 · JUNE」,由各页面的 metadata.title 配合 template 生成;
  *    帖子详情页会覆盖 openGraph 以生成按帖子定制的分享元信息。
- *  - 默认 data-theme="dark":登录页、双入口首页、工作台都是深色场景;
- *    社区与 /admin 在自己的布局里改为 data-theme="light"。
+ *  - 主题由 ThemeScript(beforeInteractive) + ThemeProvider 写入 html[data-theme]。
  *  - 不引入任何外部字体 CDN,字体栈见 globals.css。
  */
 
@@ -53,10 +52,8 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <head>
-        <ThemeScript />
-      </head>
       <body>
+        <ThemeScript />
         {/* 键盘用户的跳转链接:聚焦时才显示 */}
         <a
           href="#main"

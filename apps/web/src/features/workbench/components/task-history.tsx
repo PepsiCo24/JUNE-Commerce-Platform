@@ -17,16 +17,27 @@ import { formatDateTime } from '@/lib/utils';
 import { useTaskList, type TaskListType } from '../hooks/use-task-list';
 import { TASK_TYPE_LABEL } from '../lib/format';
 
+type TaskDetailTarget = 'auto' | 'copy' | 'image' | 'title';
+
+function getTaskDetailHref(task: GenerationTaskView, target: TaskDetailTarget): string {
+  if (target === 'copy') return `/workbench/copy?taskId=${task.id}`;
+  if (target === 'image') return `/workbench/image?taskId=${task.id}`;
+  if (target === 'title') return `/workbench/title?taskId=${task.id}`;
+  if (task.type === 'TEXT_COPY') return `/workbench/copy?taskId=${task.id}`;
+  if (task.type === 'TEXT_TITLE') return `/workbench/title?taskId=${task.id}`;
+  return `/workbench/image?taskId=${task.id}`;
+}
+
 export function TaskHistory({
   title,
   description,
   fixedType,
-  detailHref,
+  detailTarget = 'auto',
 }: {
   title: string;
   description: string;
   fixedType?: TaskListType;
-  detailHref: (task: GenerationTaskView) => string;
+  detailTarget?: TaskDetailTarget;
 }): React.JSX.Element {
   const [type, setType] = useState<TaskListType>(fixedType ?? 'ALL');
   const [status, setStatus] = useState<'ALL' | TaskStatusValue>('ALL');
@@ -66,13 +77,13 @@ export function TaskHistory({
         key: 'action',
         header: '',
         render: (row) => (
-          <Link href={detailHref(row)} className="text-sm text-accent hover:underline">
+          <Link href={getTaskDetailHref(row, detailTarget)} className="text-sm text-accent hover:underline">
             查看
           </Link>
         ),
       },
     ],
-    [detailHref],
+    [detailTarget],
   );
 
   return (
@@ -88,6 +99,7 @@ export function TaskHistory({
               { value: 'ALL', label: '全部类型' },
               { value: 'IMAGE_GENERATE', label: '生图' },
               { value: 'TEXT_COPY', label: '文案' },
+              { value: 'TEXT_TITLE', label: '标题' },
             ]}
           />
         )}

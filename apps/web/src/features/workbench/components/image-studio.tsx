@@ -215,11 +215,11 @@ export function ImageStudio(): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <section className="w-full shrink-0 space-y-4 lg:w-[22rem] xl:w-[24rem]">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <section className="space-y-4">
         <PageHeader
-          title="生图"
-          description="上传参考图、填写提示词后提交。任务会立即返回,结果在右侧实时更新。"
+          title="AI 生图"
+          description="上方填写参考图与提示词,下方查看生成结果。"
           className="min-w-0"
           actions={
             <Button variant="ghost" size="sm" asChild className="shrink-0">
@@ -443,7 +443,7 @@ export function ImageStudio(): React.JSX.Element {
         ) : null}
       </section>
 
-      <section className="min-w-0 flex-1 space-y-4">
+      <section className="space-y-4 border-t border-border-default pt-6">
         <ImageResultPanel taskId={taskId} queuePosition={queuePosition} />
       </section>
     </div>

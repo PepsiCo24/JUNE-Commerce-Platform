@@ -1,13 +1,35 @@
 /**
  * 社区模块内部共用的纯函数:公开链接拼装与游标编解码。
  */
-import { decodeCursor, encodeCursor, ERROR_CODES } from '@june/shared';
+import { PostCategory as PrismaPostCategory } from '@june/db';
+import {
+  decodeCursor,
+  encodeCursor,
+  ERROR_CODES,
+  POST_CATEGORIES,
+  POST_CATEGORY_DEFAULT,
+  type PostCategory,
+} from '@june/shared';
 
 import { AppException } from '../../common/errors/app-exception';
 
 /** 帖子公开链接。slug 发布时固定,之后改标题也不会变。 */
 export function buildPostPublicUrl(webOrigin: string, slug: string): string {
   return `${webOrigin.replace(/\/+$/, '')}/community/posts/${encodeURIComponent(slug)}`;
+}
+
+/** API 分类(小写) → Prisma 枚举 */
+export function toPrismaCategory(category: PostCategory = POST_CATEGORY_DEFAULT): PrismaPostCategory {
+  const upper = category.toUpperCase() as keyof typeof PrismaPostCategory;
+  return PrismaPostCategory[upper] ?? PrismaPostCategory.DISCUSSION;
+}
+
+/** Prisma 枚举 → API 分类(小写) */
+export function fromPrismaCategory(category: PrismaPostCategory): PostCategory {
+  const lower = category.toLowerCase();
+  return (POST_CATEGORIES as readonly string[]).includes(lower)
+    ? (lower as PostCategory)
+    : POST_CATEGORY_DEFAULT;
 }
 
 /** 时间 + id 组成的游标载荷。id 用于打破同一毫秒内的并列。 */

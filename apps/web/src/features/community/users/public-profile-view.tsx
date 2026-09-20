@@ -5,10 +5,11 @@ import { ExternalLink, MapPin } from 'lucide-react';
 import Link from 'next/link';
 
 import { Avatar } from '@/components/ui/avatar';
+import { Pagination } from '@/components/ui/pagination';
 import { formatCount, formatDate } from '@/lib/utils';
 
-import { PostCard } from '../posts/post-card';
 import { useUserPosts } from '../hooks/use-user-posts';
+import { PostCard } from '../posts/post-card';
 
 export function PublicProfileView({ profile }: { profile: PublicUserProfile }): React.JSX.Element {
   const posts = useUserPosts(profile.id);
@@ -60,26 +61,24 @@ export function PublicProfileView({ profile }: { profile: PublicUserProfile }): 
         ) : posts.items.length === 0 ? (
           <p className="text-sm text-fg-muted">还没有公开帖子。</p>
         ) : (
-          <ul className="flex flex-col gap-4">
-            {posts.items.map((post) => (
-              <li key={post.id}>
-                <PostCard post={post} showShare={false} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col gap-4">
+              {posts.items.map((post) => (
+                <li key={post.id}>
+                  <PostCard post={post} showShare={false} />
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4">
+              <Pagination
+                page={posts.page}
+                pageSize={posts.pageSize}
+                total={posts.total}
+                onPageChange={posts.setPage}
+              />
+            </div>
+          </>
         )}
-        {posts.hasMore ? (
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={() => posts.fetchNextPage()}
-              disabled={posts.isFetchingNextPage}
-              className="text-sm text-accent hover:underline disabled:opacity-50"
-            >
-              {posts.isFetchingNextPage ? '加载中…' : '加载更多'}
-            </button>
-          </div>
-        ) : null}
       </section>
 
       <p className="mt-8 text-center text-xs text-fg-subtle">

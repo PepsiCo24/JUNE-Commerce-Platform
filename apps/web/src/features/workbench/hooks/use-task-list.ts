@@ -12,7 +12,7 @@ import { api } from '@/lib/api/client';
 
 import { workbenchKeys } from '../lib/keys';
 
-export type TaskListType = 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY' | 'ALL';
+export type TaskListType = 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY' | 'TEXT_TITLE' | 'ALL';
 
 export function useTaskList(params: { type: TaskListType; status: 'ALL' | TaskStatusValue }) {
   const query = useInfiniteQuery({

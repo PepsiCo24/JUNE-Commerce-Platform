@@ -1,6 +1,10 @@
 'use client';
 
-import type { PostListItem } from '@june/shared';
+import {
+  POST_CATEGORY_LABELS,
+  type PostCategory,
+  type PostListItem,
+} from '@june/shared';
 import { Bookmark, Heart, MessageSquare, Pin } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -18,10 +22,8 @@ import { SharePanel } from '../share/share-panel';
 import { postDetailPath } from '../utils';
 
 /**
- * 横向紧凑帖子卡片。
- *
- * 无封面时不占位空白块;封面加载失败则隐藏缩略图。
- * 操作区各自 stopPropagation,避免与标题链接嵌套冲突。
+ * 紧凑信息流卡片(参考 Reddit / X Communities 密度)。
+ * 单行元信息 + 标题/摘要 + 小缩略图 + 底栏互动。
  */
 export function PostCard({
   post,
@@ -38,7 +40,6 @@ export function PostCard({
   showShare?: boolean;
   actions?: React.ReactNode;
   className?: string;
-  /** 入场动画(仅首次挂载一次) */
   animate?: boolean;
 }): React.JSX.Element {
   const router = useRouter();
@@ -48,6 +49,7 @@ export function PostCard({
   const unavailable = Boolean(post.unavailable);
   const cardHref = unavailable ? null : postDetailPath(post.slug);
   const showThumb = Boolean(post.coverUrl) && !thumbFailed && !unavailable;
+  const category = (post.category ?? 'other') as PostCategory;
 
   const requireAuth = (action: string): boolean => {
     if (isAuthenticated) return true;
@@ -85,45 +87,44 @@ export function PostCard({
   return (
     <article
       className={cn(
-        'flex flex-col gap-3 rounded-xl border border-border-default bg-bg-elevated p-[18px] shadow-sm sm:p-5',
-        pinned && 'border-accent-border',
+        'rounded-lg border border-border-default bg-bg-elevated px-3 py-2 transition-colors hover:border-border-strong',
+        pinned && 'border-accent-border bg-accent-surface/30',
         unavailable && 'opacity-90',
         animate && 'community-card-enter',
         className,
       )}
     >
-      <div className="flex items-center gap-2">
-        <Link href={`/community/users/${post.author.id}`} className="shrink-0 rounded-full" onClick={(e) => e.stopPropagation()}>
-          <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={28} />
-        </Link>
+      <div className="flex gap-2.5">
         <div className="min-w-0 flex-1">
-          <Link
-            href={`/community/users/${post.author.id}`}
-            className="truncate text-sm text-fg hover:text-accent"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {post.author.displayName}
-          </Link>
-          <p className="text-xs text-fg-subtle">{timeLabel}</p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          {pinned ? (
-            <Badge tone="accent" size="sm" icon={<Pin size={12} />}>
-              置顶
-            </Badge>
-          ) : null}
-          {showStatus ? <StatusBadge status={post.status} /> : null}
-          {unavailable ? (
-            <Badge tone="neutral" size="sm">
-              不可用
-            </Badge>
-          ) : null}
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-fg-subtle">
+            <Link
+              href={`/community/users/${post.author.id}`}
+              className="inline-flex max-w-[40%] items-center gap-1 truncate text-fg hover:text-accent"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Avatar src={post.author.avatarUrl} name={post.author.displayName} size={16} />
+              <span className="truncate font-medium">{post.author.displayName}</span>
+            </Link>
+            <span aria-hidden>·</span>
+            <span className="rounded bg-surface-hover px-1 py-px text-[10px] text-fg-muted">
+              {POST_CATEGORY_LABELS[category]}
+            </span>
+            <span aria-hidden>·</span>
+            <time className="tabular">{timeLabel}</time>
+            {pinned ? (
+              <Badge tone="accent" size="sm" icon={<Pin size={11} />}>
+                置顶
+              </Badge>
+            ) : null}
+            {showStatus ? <StatusBadge status={post.status} /> : null}
+            {unavailable ? (
+              <Badge tone="neutral" size="sm">
+                不可用
+              </Badge>
+            ) : null}
+          </div>
 
-      <div className="flex gap-3 sm:gap-4">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-[18px] leading-snug font-semibold text-fg sm:text-[19px]">
+          <h3 className="mt-0.5 line-clamp-1 text-sm leading-snug font-semibold text-fg sm:text-[15px]">
             {cardHref ? (
               <Link href={cardHref} className="hover:text-accent">
                 {titleText}
@@ -134,117 +135,114 @@ export function PostCard({
           </h3>
 
           {!unavailable && post.excerpt ? (
-            <p className="mt-1.5 line-clamp-3 text-[14px] leading-relaxed text-fg-muted sm:text-[15px]">
-              {post.excerpt}
-            </p>
+            <p className="mt-0.5 line-clamp-1 text-xs leading-relaxed text-fg-muted">{post.excerpt}</p>
           ) : null}
 
           {unavailable ? (
-            <p className="mt-1.5 text-sm text-fg-muted">该内容已下架或不可访问,仍可取消收藏。</p>
+            <p className="mt-0.5 text-xs text-fg-muted">该内容已下架或不可访问,仍可取消收藏。</p>
           ) : null}
+
+          <div className="mt-1 flex flex-wrap items-center gap-0.5">
+            {!unavailable ? (
+              <button
+                type="button"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg',
+                  like.liked && 'text-accent',
+                )}
+                aria-pressed={like.liked}
+                aria-label={like.liked ? '取消点赞' : '点赞'}
+                disabled={like.pending}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!requireAuth('点赞')) return;
+                  like.toggle();
+                }}
+              >
+                <Heart size={13} className={like.liked ? 'fill-current' : undefined} aria-hidden />
+                <span className="tabular">{formatCount(like.count)}</span>
+              </button>
+            ) : null}
+
+            {!unavailable && cardHref ? (
+              <Link
+                href={cardHref}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
+                aria-label={`${post.commentCount} 条评论`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <MessageSquare size={13} aria-hidden />
+                <span className="tabular">{formatCount(post.commentCount)}</span>
+              </Link>
+            ) : null}
+
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg',
+                bookmark.bookmarked && 'text-accent',
+              )}
+              aria-pressed={bookmark.bookmarked}
+              aria-label={bookmark.bookmarked ? '取消收藏' : '收藏'}
+              disabled={bookmark.pending}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!requireAuth('收藏')) return;
+                bookmark.toggle();
+              }}
+            >
+              <Bookmark
+                size={13}
+                className={bookmark.bookmarked ? 'fill-current' : undefined}
+                aria-hidden
+              />
+            </button>
+
+            {!unavailable && showShare && post.status === 'PUBLISHED' ? (
+              <span
+                className="inline-flex"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <SharePanel slug={post.slug} title={post.title} compact />
+              </span>
+            ) : null}
+
+            {actions ? <div className="ml-auto flex flex-wrap gap-2">{actions}</div> : null}
+          </div>
         </div>
 
         {showThumb ? (
           cardHref ? (
             <Link
               href={cardHref}
-              className="relative h-24 w-36 shrink-0 overflow-hidden rounded-md bg-surface-hover sm:h-[72px] sm:w-24"
+              className="relative size-14 shrink-0 overflow-hidden rounded-md bg-surface-hover"
               aria-label={`查看帖子:《${post.title}》`}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- 列表缩略图需 onError 隐藏,不走 AssetImage */}
-              <img
-                src={post.coverUrl!}
-                alt=""
-                className="size-full object-cover"
-                loading="lazy"
-                onError={() => setThumbFailed(true)}
-              />
-            </Link>
-          ) : (
-            <div className="relative h-24 w-36 shrink-0 overflow-hidden rounded-md bg-surface-hover sm:h-[72px] sm:w-24">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={post.coverUrl!}
                 alt=""
                 className="size-full object-cover"
                 loading="lazy"
+                decoding="async"
+                onError={() => setThumbFailed(true)}
+              />
+            </Link>
+          ) : (
+            <div className="relative size-14 shrink-0 overflow-hidden rounded-md bg-surface-hover">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={post.coverUrl!}
+                alt=""
+                className="size-full object-cover"
+                loading="lazy"
+                decoding="async"
                 onError={() => setThumbFailed(true)}
               />
             </div>
           )
         ) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1 border-t border-border-default pt-3">
-        {!unavailable ? (
-          <button
-            type="button"
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg',
-              like.liked && 'text-accent',
-            )}
-            aria-pressed={like.liked}
-            aria-label={like.liked ? '取消点赞' : '点赞'}
-            disabled={like.pending}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (!requireAuth('点赞')) return;
-              like.toggle();
-            }}
-          >
-            <Heart size={14} className={like.liked ? 'fill-current' : undefined} aria-hidden />
-            <span className="tabular">{formatCount(like.count)}</span>
-          </button>
-        ) : null}
-
-        {!unavailable && cardHref ? (
-          <Link
-            href={cardHref}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
-            aria-label={`${post.commentCount} 条评论`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <MessageSquare size={14} aria-hidden />
-            <span className="tabular">{formatCount(post.commentCount)}</span>
-          </Link>
-        ) : null}
-
-        <button
-          type="button"
-          className={cn(
-            'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg',
-            bookmark.bookmarked && 'text-accent',
-          )}
-          aria-pressed={bookmark.bookmarked}
-          aria-label={bookmark.bookmarked ? '取消收藏' : '收藏'}
-          disabled={bookmark.pending}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!requireAuth('收藏')) return;
-            bookmark.toggle();
-          }}
-        >
-          <Bookmark
-            size={14}
-            className={bookmark.bookmarked ? 'fill-current' : undefined}
-            aria-hidden
-          />
-          <span className="sr-only sm:not-sr-only sm:inline">
-            {bookmark.bookmarked ? '已收藏' : '收藏'}
-          </span>
-        </button>
-
-        {!unavailable && showShare && post.status === 'PUBLISHED' ? (
-          <span
-            className="inline-flex"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            <SharePanel slug={post.slug} title={post.title} compact />
-          </span>
-        ) : null}
-
-        {actions ? <div className="ml-auto flex flex-wrap gap-2">{actions}</div> : null}
       </div>
     </article>
   );

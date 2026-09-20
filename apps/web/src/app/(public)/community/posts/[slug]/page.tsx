@@ -1,10 +1,10 @@
 import { ERROR_CODES, htmlToExcerpt, pageTitle, type PostDetail } from '@june/shared';
 import type { Metadata } from 'next';
 
+import { loadPostBySlug } from '@/features/community/load-post';
 import { PostDetailView } from '@/features/community/posts/post-detail-view';
 import { PostNotice } from '@/features/community/posts/post-notice';
-import { ApiError } from '@/lib/api/errors';
-import { serverGetCaught } from '@/lib/api/server';
+import { ApiError, NetworkError } from '@/lib/api/errors';
 
 /**
  * 公开帖子详情。
@@ -15,13 +15,9 @@ import { serverGetCaught } from '@/lib/api/server';
 
 type PageProps = { params: Promise<{ slug: string }> };
 
-async function loadPost(slug: string) {
-  return serverGetCaught<PostDetail>(`/community/posts/${encodeURIComponent(slug)}`);
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const result = await loadPost(slug);
+  const result = await loadPostBySlug(slug);
   if (!result.ok) {
     return { title: pageTitle('帖子') };
   }
@@ -43,13 +39,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function CommunityPostDetailPage({ params }: PageProps): Promise<React.JSX.Element> {
   const { slug } = await params;
-  const result = await loadPost(slug);
+  const result = await loadPostBySlug(slug);
 
   if (!result.ok) {
     const code = result.error instanceof ApiError ? result.error.code : ERROR_CODES.INTERNAL_ERROR;
+    const retryable = result.error instanceof NetworkError || (result.error instanceof ApiError && result.error.isRetryable);
     return (
       <div className="mx-auto w-full max-w-[90rem] px-4 py-8 sm:px-6">
-        <PostNotice code={code} />
+        <PostNotice code={code} slug={slug} retryable={retryable} />
       </div>
     );
   }

@@ -22,6 +22,9 @@ import {
   type CopyGenerateInput,
   type CopyResultPayload,
   type ContentCheckOutcome,
+  type TitleGenerateInput,
+  type TitleResultPayload,
+  titleResultPayloadSchema,
   type CursorResult,
   type GenerationResultView,
   type GenerationTaskView,
@@ -54,7 +57,7 @@ export interface ImageRetryInput {
 export interface TaskListQueryInput {
   cursor?: string | undefined;
   limit: number;
-  type: 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY' | 'ALL';
+  type: 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY' | 'TEXT_TITLE' | 'ALL';
   status: 'ALL' | TaskStatusValue;
 }
 
@@ -455,6 +458,124 @@ export class GenerationService {
   }
 
   // ===========================================================================
+  // 标题提交
+  // ===========================================================================
+
+  async submitTitle(user: AuthUser, dto: TitleGenerateInput): Promise<TaskSubmitResponse> {
+    const resolved = await this.resolver.resolveForSubmit({
+      capability: 'TEXT',
+      policyScope: 'title',
+      requestedModelConfigId: dto.modelConfigId,
+    });
+
+    const product = dto.productId ? await this.requireOwnedProduct(user.id, dto.productId) : null;
+    const productName = product?.name ?? dto.productName ?? '';
+
+    const check = await this.content.checkInput(
+      {
+        productName,
+        prompt: dto.prompt ?? '',
+        ...Object.fromEntries(dto.sellingPoints.map((p, i) => [`sellingPoints[${i}]`, p])),
+        ...Object.fromEntries(dto.keywords.map((k, i) => [`keywords[${i}]`, k])),
+      },
+      dto.targetPlatform,
+    );
+    if (!check.passed) {
+      throw AppException.badRequest(ERROR_CODES.CONTENT_BLOCKED_INPUT, undefined, {
+        details: check.violations
+          .filter((v) => v.action === 'BLOCK')
+          .map((v) => ({ path: v.field, message: `${v.ruleName}:命中「${v.matched}」` })),
+      });
+    }
+
+    const existing = await this.findByIdempotencyKey(user.id, dto.idempotencyKey);
+    if (existing) return this.deduplicatedResponse(existing);
+
+    await this.assertTextConcurrency(user.id);
+    await this.queue.assertCapacity(QUEUE_NAMES.textGeneration);
+
+    const systemPrompt = await this.content.buildTitleSystemPrompt(
+      dto.targetPlatform,
+      dto.titleCount,
+      dto.maxTitleLength,
+    );
+    const userContent = this.content.wrapUserInput(
+      [
+        `商品名称:${productName || '(未提供)'}`,
+        dto.sellingPoints.length > 0 ? `卖点:\n${dto.sellingPoints.map((p) => `- ${p}`).join('\n')}` : '',
+        dto.keywords.length > 0 ? `关键词:${dto.keywords.join('、')}` : '',
+        dto.prompt ? `补充要求:${dto.prompt}` : '',
+        `需要 ${dto.titleCount} 条候选标题,每条不超过 ${dto.maxTitleLength} 字。`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
+
+    const input: Prisma.InputJsonObject = {
+      productId: dto.productId ?? null,
+      productName,
+      sellingPoints: dto.sellingPoints,
+      keywords: dto.keywords,
+      targetPlatform: dto.targetPlatform,
+      prompt: dto.prompt ?? '',
+      titleCount: dto.titleCount,
+      maxTitleLength: dto.maxTitleLength,
+      inputCheck: check as unknown as Prisma.InputJsonObject,
+      systemPrompt,
+      wrappedUserInput: userContent,
+      structuredOutputSchema: this.content.getTitleStructuredOutputSchema(
+        dto.titleCount,
+        dto.maxTitleLength,
+      ) as Prisma.InputJsonObject,
+    };
+
+    let task: GenerationTask;
+    try {
+      task = await this.prisma.db.$transaction(async (tx) => {
+        const created = await tx.generationTask.create({
+          data: {
+            userId: user.id,
+            type: TaskType.TEXT_TITLE,
+            status: TaskStatus.QUEUED,
+            stage: 'queued',
+            modelConfigId: resolved.modelConfig.id,
+            providerSlug: resolved.provider.slug,
+            modelKey: resolved.modelConfig.modelKey,
+            modelDisplayName: resolved.modelConfig.displayName,
+            configVersion: resolved.configVersion,
+            idempotencyKey: dto.idempotencyKey,
+            input,
+            requestedCount: dto.titleCount,
+            attempt: 1,
+          },
+        });
+        await tx.generationResult.create({
+          data: { taskId: created.id, seq: 0, status: ResultStatus.PENDING },
+        });
+        return created;
+      });
+    } catch (err) {
+      const duplicated = await this.recoverFromDuplicate(err, user.id, dto.idempotencyKey);
+      if (duplicated) return this.deduplicatedResponse(duplicated);
+      throw err;
+    }
+
+    await this.queue.enqueueTextGeneration({
+      taskId: task.id,
+      userId: user.id,
+      configVersion: resolved.configVersion,
+      attempt: 1,
+    });
+
+    return {
+      taskId: task.id,
+      status: task.status,
+      deduplicated: false,
+      queuePosition: await this.queue.approximatePosition(QUEUE_NAMES.textGeneration),
+    };
+  }
+
+  // ===========================================================================
   // 查询
   // ===========================================================================
 
@@ -672,7 +793,11 @@ export class GenerationService {
   /** 文案任务同样限制排队深度,避免一个用户把文本队列灌满 */
   private async assertTextConcurrency(userId: string): Promise<void> {
     const pending = await this.prisma.db.generationTask.count({
-      where: { userId, status: { in: [TaskStatus.QUEUED, TaskStatus.RUNNING] }, type: TaskType.TEXT_COPY },
+      where: {
+        userId,
+        status: { in: [TaskStatus.QUEUED, TaskStatus.RUNNING] },
+        type: { in: [TaskType.TEXT_COPY, TaskType.TEXT_TITLE] },
+      },
     });
     if (pending + 1 > this.env.CONCURRENCY_IMAGE_PER_USER_PENDING) {
       throw AppException.conflict(
@@ -808,12 +933,26 @@ export class GenerationService {
       };
     }
 
+    const rawPayload = result.textPayload;
+    let text: CopyResultPayload | null = null;
+    let titles: TitleResultPayload | null = null;
+    if (rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)) {
+      const payload = rawPayload as Record<string, unknown>;
+      if ('body' in payload) {
+        text = rawPayload as CopyResultPayload;
+      } else if ('titles' in payload) {
+        const parsed = titleResultPayloadSchema.safeParse(rawPayload);
+        titles = parsed.success ? parsed.data : null;
+      }
+    }
+
     return {
       id: result.id,
       seq: result.seq,
       status: result.status,
       asset,
-      text: (result.textPayload as CopyResultPayload | null) ?? null,
+      text,
+      titles,
       errorCode: result.errorCode,
       errorMessage: result.errorMessage,
       check: (result.checkResult as ContentCheckOutcome | null) ?? null,

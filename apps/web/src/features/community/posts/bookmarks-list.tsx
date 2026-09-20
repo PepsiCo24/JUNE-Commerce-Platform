@@ -2,10 +2,12 @@
 
 import { Bookmark } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useCallback } from 'react';
 
 import { EmptyState, ErrorState } from '@/components/feedback/states';
 import { Button } from '@/components/ui/button';
-import { LoadMore } from '@/components/ui/pagination';
+import { Pagination } from '@/components/ui/pagination';
 
 import { useCommunityListSync } from '../hooks/use-community-sse';
 import { useBookmarkList } from '../hooks/use-post-list';
@@ -17,14 +19,30 @@ import { PostGridSkeleton } from './post-card-skeleton';
  * 我的收藏列表。不可访问的帖子以 unavailable 卡片展示,仍可取消收藏。
  */
 export function BookmarksList(): React.JSX.Element {
-  const list = useBookmarkList();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const list = useBookmarkList({ page });
   useCommunityListSync();
 
+  const setPage = useCallback(
+    (next: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next <= 1) params.delete('page');
+      else params.set('page', String(next));
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [pathname, router, searchParams],
+  );
+
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5">
+    <div className="flex w-full flex-col gap-5">
       <header className="flex flex-col gap-3">
         <h1 className="text-lg font-semibold text-fg sm:text-xl">我的收藏</h1>
-        <CommunityPersonalNav />
+        <CommunityPersonalNav className="lg:hidden" />
       </header>
 
       {list.isLoading ? <PostGridSkeleton /> : null}
@@ -53,10 +71,11 @@ export function BookmarksList(): React.JSX.Element {
               <PostCard key={post.id} post={post} showShare={!post.unavailable} />
             ))}
           </div>
-          <LoadMore
-            hasMore={list.hasMore}
-            loading={list.isFetchingNextPage}
-            onLoadMore={list.loadMore}
+          <Pagination
+            page={list.page}
+            pageSize={list.pageSize}
+            total={list.total}
+            onPageChange={setPage}
           />
         </>
       ) : null}

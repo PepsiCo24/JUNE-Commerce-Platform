@@ -1,7 +1,7 @@
 'use client';
 
 import { INHERITABLE_SHOP_FIELD_LABELS, type InheritableShopField } from '@june/shared';
-import { KeyRound, Pencil, Trash2 } from 'lucide-react';
+import { KeyRound, Package, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -69,7 +69,10 @@ export function ShopDetailPage({ shopId }: { shopId: string }): React.JSX.Elemen
       <div className="flex flex-wrap gap-2">
         <StatusBadge status={shop.status} />
         <Badge>{SHOP_TYPE_LABEL[shop.type]}</Badge>
-        <span className="text-sm text-fg-muted">商品 {shop.productCount}</span>
+        <span className="text-sm text-fg-muted">直属商品 {shop.productCount}</span>
+        {shop.childCount > 0 ? (
+          <span className="text-sm text-fg-muted">含子店 {shop.totalProductCount}</span>
+        ) : null}
         <span className="text-sm text-fg-muted">子店 {shop.childCount}</span>
         <span className="text-sm text-fg-muted">凭据 {shop.credentialCount}</span>
       </div>
@@ -79,10 +82,29 @@ export function ShopDetailPage({ shopId }: { shopId: string }): React.JSX.Elemen
           <CardTitle as="h2">基本信息</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
+          <Info label="平台" value={shop.platform} />
+          <Info label="平台账号" value={shop.platformAccount} />
+          <Info label="登录密码" value={shop.hasPrimaryPassword ? '已设置(需在凭据中查看)' : '未设置'} />
           <Info label="店铺链接" value={shop.url} />
           <Info label="简介" value={shop.description} />
           <Info label="创建时间" value={formatDateTime(shop.createdAt)} />
           <Info label="更新时间" value={formatDateTime(shop.updatedAt)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3">
+          <CardTitle as="h2" className="flex items-center gap-2">
+            <Package size={18} aria-hidden />
+            本店商品
+          </CardTitle>
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={`/workbench/shops/${shop.id}/products`}>查看本店商品</Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="text-sm text-fg-muted">
+          商品上传、导入与维护在店铺内按需打开,不在工作台默认展开。当前直属商品 {shop.productCount} 件
+          {shop.childCount > 0 ? `,含子店合计 ${shop.totalProductCount} 件` : ''}。
         </CardContent>
       </Card>
 

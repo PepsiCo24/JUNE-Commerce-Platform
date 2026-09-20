@@ -2,7 +2,7 @@
  * 社区模块的接口调用与 query key。
  *
  * 路径、请求体、响应体全部以 `apps/api/src/modules/community/*.controller.ts` 为准:
- *   posts.controller.ts     GET  /community/posts            列表(游标)
+ *   posts.controller.ts     GET  /community/posts            列表(页码分页)
  *                           GET  /community/my/posts         我的内容(含草稿与被隐藏)
  *                           GET  /community/posts/:slug      详情
  *                           POST /community/posts            发布新帖
@@ -24,11 +24,13 @@ import {
   type CommentItem,
   type CommunityUserSummary,
   type CursorResult,
+  type PageResult,
   type PostDetail,
   type PostDraftDetail,
   type PostDraftSaveInput,
   type PostListItem,
   type PostPublishInput,
+  type PostCategory,
   type PostSort,
   type ShareResponse,
   type UploadTicketRequest,
@@ -63,6 +65,7 @@ export type MyPostStatus = 'ALL' | 'DRAFT' | 'PUBLISHED' | 'HIDDEN';
 export interface PostListParams {
   sort: PostSort;
   q?: string;
+  category?: PostCategory;
   mine?: boolean;
 }
 
@@ -72,13 +75,16 @@ export interface PostListParams {
  */
 export const communityKeys = {
   all: ['community'] as const,
-  posts: (params: PostListParams) => ['community', 'posts', params] as const,
+  posts: (params: PostListParams & { page?: number }) => ['community', 'posts', params] as const,
+  postsFeed: (params: PostListParams & { pageSize?: number }) =>
+    ['community', 'posts-feed', params] as const,
   post: (slug: string) => ['community', 'post', slug] as const,
-  myPosts: (params: { status: MyPostStatus; q?: string }) => ['community', 'my-posts', params] as const,
-  bookmarks: (params: { q?: string } = {}) => ['community', 'bookmarks', params] as const,
+  myPosts: (params: { status: MyPostStatus; q?: string; page?: number }) =>
+    ['community', 'my-posts', params] as const,
+  bookmarks: (params: { q?: string; page?: number } = {}) => ['community', 'bookmarks', params] as const,
   users: (params: { q: string }) => ['community', 'users', params] as const,
   userProfile: (id: string) => ['community', 'user-profile', id] as const,
-  userPosts: (id: string) => ['community', 'user-posts', id] as const,
+  userPosts: (id: string, page?: number) => ['community', 'user-posts', id, page] as const,
   comments: (postId: string) => ['community', 'comments', postId] as const,
   draft: (draftId: string) => ['community', 'draft', draftId] as const,
   share: (slug: string) => ['community', 'share', slug] as const,
@@ -89,31 +95,32 @@ export const communityKeys = {
 // ---------------------------------------------------------------------------
 
 export function fetchPosts(
-  params: PostListParams & { cursor?: string; limit?: number },
+  params: PostListParams & { page?: number; pageSize?: number },
   signal?: AbortSignal,
-): Promise<CursorResult<PostListItem>> {
-  return api.get<CursorResult<PostListItem>>('/community/posts', {
+): Promise<PageResult<PostListItem>> {
+  return api.get<PageResult<PostListItem>>('/community/posts', {
     query: {
       sort: params.sort,
       q: params.q,
+      category: params.category,
       mine: params.mine ? 'true' : undefined,
-      cursor: params.cursor,
-      limit: params.limit ?? PAGE_SIZE_DEFAULT,
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? PAGE_SIZE_DEFAULT,
     },
     signal,
   });
 }
 
 export function fetchMyPosts(
-  params: { status: MyPostStatus; q?: string; cursor?: string; limit?: number },
+  params: { status: MyPostStatus; q?: string; page?: number; pageSize?: number },
   signal?: AbortSignal,
-): Promise<CursorResult<PostListItem>> {
-  return api.get<CursorResult<PostListItem>>('/community/my/posts', {
+): Promise<PageResult<PostListItem>> {
+  return api.get<PageResult<PostListItem>>('/community/my/posts', {
     query: {
       status: params.status,
       q: params.q,
-      cursor: params.cursor,
-      limit: params.limit ?? PAGE_SIZE_DEFAULT,
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? PAGE_SIZE_DEFAULT,
     },
     signal,
   });
@@ -160,14 +167,14 @@ export function unbookmarkPost(postId: string): Promise<BookmarkResult> {
 }
 
 export function fetchBookmarks(
-  params: { q?: string; cursor?: string; limit?: number } = {},
+  params: { q?: string; page?: number; pageSize?: number } = {},
   signal?: AbortSignal,
-): Promise<CursorResult<PostListItem>> {
-  return api.get<CursorResult<PostListItem>>('/community/bookmarks', {
+): Promise<PageResult<PostListItem>> {
+  return api.get<PageResult<PostListItem>>('/community/bookmarks', {
     query: {
       q: params.q,
-      cursor: params.cursor,
-      limit: params.limit ?? PAGE_SIZE_DEFAULT,
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? PAGE_SIZE_DEFAULT,
     },
     signal,
   });

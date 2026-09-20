@@ -2,10 +2,12 @@
 
 import { FileClock, PenLine } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback } from 'react';
 
 import { EmptyState, ErrorState } from '@/components/feedback/states';
 import { Button } from '@/components/ui/button';
-import { LoadMore } from '@/components/ui/pagination';
+import { Pagination } from '@/components/ui/pagination';
 
 import { useCommunityListSync } from '../hooks/use-community-sse';
 import { useMyPostList } from '../hooks/use-post-list';
@@ -14,8 +16,24 @@ import { PostCard } from './post-card';
 import { PostGridSkeleton } from './post-card-skeleton';
 
 export function DraftsList(): React.JSX.Element {
-  const list = useMyPostList({ status: 'DRAFT' });
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const list = useMyPostList({ status: 'DRAFT', page });
   useCommunityListSync();
+
+  const setPage = useCallback(
+    (next: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (next <= 1) params.delete('page');
+      else params.set('page', String(next));
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [pathname, router, searchParams],
+  );
 
   if (list.isLoading) return <PostGridSkeleton />;
 
@@ -51,7 +69,12 @@ export function DraftsList(): React.JSX.Element {
           />
         ))}
       </div>
-      <LoadMore hasMore={list.hasMore} loading={list.isFetchingNextPage} onLoadMore={list.loadMore} />
+      <Pagination
+        page={list.page}
+        pageSize={list.pageSize}
+        total={list.total}
+        onPageChange={setPage}
+      />
     </div>
   );
 }

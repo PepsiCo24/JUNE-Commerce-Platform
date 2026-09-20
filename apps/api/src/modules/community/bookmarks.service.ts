@@ -3,14 +3,13 @@ import { PostStatus, Prisma } from '@june/db';
 import {
   ERROR_CODES,
   type BookmarkListQuery,
-  type CursorResult,
+  type PageResult,
   type PostListItem,
 } from '@june/shared';
 
 import type { AuthUser } from '../../common/auth/auth-context';
 import { AppException } from '../../common/errors/app-exception';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { encodeTimeCursor, parseCursor, type TimeCursor } from './community.util';
 import { PostsService } from './posts.service';
 
 export interface BookmarkResult {
@@ -60,90 +59,81 @@ export class BookmarksService {
     return { bookmarked: false };
   }
 
-  async listMine(user: AuthUser, query: BookmarkListQuery): Promise<CursorResult<PostListItem>> {
+  async listMine(user: AuthUser, query: BookmarkListQuery): Promise<PageResult<PostListItem>> {
     const keyword = query.q?.trim();
+    const page = query.page;
+    const pageSize = query.pageSize;
 
-    const rows = await this.prisma.db.bookmark.findMany({
-      where: {
-        userId: user.id,
-        ...(query.cursor
-          ? (() => {
-              const cursor = parseCursor<TimeCursor>(query.cursor, ['t', 'id']);
-              const at = new Date(cursor.t);
-              return {
-                OR: [
-                  { createdAt: { lt: at } },
-                  { AND: [{ createdAt: at }, { id: { lt: cursor.id } }] },
-                ],
-              };
-            })()
-          : {}),
-        ...(keyword
-          ? {
-              post: {
-                OR: [
-                  { title: { contains: keyword, mode: 'insensitive' } },
-                  { excerpt: { contains: keyword, mode: 'insensitive' } },
-                  { contentHtml: { contains: keyword, mode: 'insensitive' } },
-                ],
-              },
-            }
-          : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: query.limit + 1,
-      select: {
-        id: true,
-        createdAt: true,
-        postId: true,
-        post: {
-          select: {
-            id: true,
-            slug: true,
-            title: true,
-            excerpt: true,
-            authorId: true,
-            status: true,
-            publishedAt: true,
-            likeCount: true,
-            commentCount: true,
-            isPinned: true,
-            hotScore: true,
-            updatedAt: true,
-            imageAssetIds: true,
-            deletedAt: true,
-            coverAsset: {
-              select: {
-                id: true,
-                objectKey: true,
-                visibility: true,
-                derivatives: true,
-                width: true,
-                height: true,
+    const where = {
+      userId: user.id,
+      ...(keyword
+        ? {
+            post: {
+              OR: [
+                { title: { contains: keyword, mode: 'insensitive' as const } },
+                { excerpt: { contains: keyword, mode: 'insensitive' as const } },
+                { contentHtml: { contains: keyword, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.db.bookmark.count({ where }),
+      this.prisma.db.bookmark.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          createdAt: true,
+          postId: true,
+          post: {
+            select: {
+              id: true,
+              slug: true,
+              title: true,
+              excerpt: true,
+              category: true,
+              authorId: true,
+              status: true,
+              publishedAt: true,
+              likeCount: true,
+              commentCount: true,
+              isPinned: true,
+              hotScore: true,
+              updatedAt: true,
+              imageAssetIds: true,
+              deletedAt: true,
+              coverAsset: {
+                select: {
+                  id: true,
+                  objectKey: true,
+                  visibility: true,
+                  derivatives: true,
+                  width: true,
+                  height: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+    ]);
 
-    const hasMore = rows.length > query.limit;
-    const page = hasMore ? rows.slice(0, query.limit) : rows;
-    const last = page[page.length - 1];
-
-    const accessibleRows = page
+    const accessibleRows = rows
       .filter(
         (row) =>
-          row.post &&
-          row.post.deletedAt == null &&
-          row.post.status === PostStatus.PUBLISHED,
+          row.post && row.post.deletedAt == null && row.post.status === PostStatus.PUBLISHED,
       )
       .map((row) => row.post!);
 
     const assembled = await this.posts.toListItems(accessibleRows, user);
     const byId = new Map(assembled.map((item) => [item.id, item]));
 
-    const items: PostListItem[] = page.map((row) => {
+    const items: PostListItem[] = rows.map((row) => {
       const bookmarkedAt = row.createdAt.toISOString();
       const visible = byId.get(row.postId);
       if (visible) {
@@ -154,6 +144,7 @@ export class BookmarksService {
         slug: row.post?.slug ?? row.postId,
         title: '内容不可用',
         excerpt: '该帖子已隐藏、删除或不可访问',
+        category: 'other',
         coverUrl: null,
         coverWidth: null,
         coverHeight: null,
@@ -174,8 +165,10 @@ export class BookmarksService {
 
     return {
       items,
-      nextCursor: hasMore && last ? encodeTimeCursor(last.createdAt, last.id) : null,
-      hasMore,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / Math.max(1, pageSize))),
     };
   }
 }

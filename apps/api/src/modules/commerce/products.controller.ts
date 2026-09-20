@@ -22,6 +22,7 @@ import { ProductsService, type ProductListQuery } from './products.service';
 /** 商品选择器的查询参数。跨端契约里没有这个轻量接口,按 assets 模块的先例就近定义。 */
 const productOptionsQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
+  shopId: idSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PAGE_SIZE_MAX).default(50),
 });
 type ProductOptionsQuery = z.infer<typeof productOptionsQuerySchema>;

@@ -20,6 +20,7 @@ export {
   ContentRuleType,
   ImportStatus,
   ModelCapability,
+  PostCategory,
   PostStatus,
   ProductStatus,
   ProviderKind,
@@ -35,6 +36,7 @@ export {
 
 // 模型行类型
 export type {
+  AlipayAccount,
   Asset,
   AuditLog,
   CleanupRun,

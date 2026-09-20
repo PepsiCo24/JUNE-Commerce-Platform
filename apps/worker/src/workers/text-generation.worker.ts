@@ -15,12 +15,13 @@
  *  5. **不做提前流式展示**:SSE 事件只带状态与阶段,任何时候都不携带正文,
  *     因此用户不可能看到未通过检查的内容。
  */
-import { ResultStatus, TaskStatus } from '@june/db';
+import { ResultStatus, TaskStatus, TaskType } from '@june/db';
 import {
   CONTENT_CHECK_DISCLAIMER,
   ERROR_CODES,
   QUEUE_NAMES,
   copyResultPayloadSchema,
+  titleResultPayloadSchema,
   type ContentCheckOutcome,
   type TextGenerationJob,
 } from '@june/shared';
@@ -62,6 +63,10 @@ interface CopyInput {
   style?: string;
   prompt?: string;
   titleCount?: number;
+  keywords?: string[];
+  maxTitleLength?: number;
+  systemPrompt?: string;
+  wrappedUserInput?: string;
 }
 
 /**
@@ -69,6 +74,28 @@ interface CopyInput {
  * 手写而不是自动生成:各家结构化输出对 schema 的子集支持不同
  * (OpenAI 要求 additionalProperties=false 且 required 覆盖全部字段),需要精确控制。
  */
+const TITLE_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['titles'],
+  properties: {
+    titles: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 10,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text', 'charCount'],
+        properties: {
+          text: { type: 'string', maxLength: 300 },
+          charCount: { type: 'integer', minimum: 1, maximum: 120 },
+        },
+      },
+    },
+  },
+};
+
 const COPY_JSON_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -214,9 +241,20 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
 
     const input = (task.input ?? {}) as CopyInput;
     const platform = input.targetPlatform ?? 'other';
-    // 系统提示词只在进程内使用:绝不写日志、绝不进 SSE、绝不落任务表
-    const systemPrompt = await buildSystemPrompt(platform);
-    const basePrompt = buildUserPrompt(input);
+    const isTitleTask = task.type === TaskType.TEXT_TITLE;
+    // 系统提示词只在进程内使用:标题任务优先用提交时定版的 systemPrompt
+    const systemPrompt =
+      isTitleTask && typeof input.systemPrompt === 'string' && input.systemPrompt.trim()
+        ? input.systemPrompt
+        : await buildSystemPrompt(platform);
+    const basePrompt =
+      isTitleTask && typeof input.wrappedUserInput === 'string' && input.wrappedUserInput.trim()
+        ? input.wrappedUserInput
+        : isTitleTask
+          ? buildTitleUserPrompt(input)
+          : buildUserPrompt(input);
+    const jsonSchema = isTitleTask ? TITLE_JSON_SCHEMA : COPY_JSON_SCHEMA;
+    const schemaName = isTitleTask ? 'june_title_result' : 'june_copy_result';
 
     const deadline = jobStartedAt + env.TASK_TEXT_TIMEOUT_MS;
     let providerCallCount = task.providerCallCount;
@@ -259,8 +297,8 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
         modelKey: model.modelKey,
         systemPrompt,
         userPrompt: extraInstruction ? `${basePrompt}\n\n${extraInstruction}` : basePrompt,
-        jsonSchema: COPY_JSON_SCHEMA,
-        schemaName: 'june_copy_result',
+        jsonSchema,
+        schemaName,
         ...(model.limits.maxOutputTokens > 0 ? { maxOutputTokens: model.limits.maxOutputTokens } : {}),
       };
 
@@ -309,6 +347,137 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
 
       // ---- 结构校验:上游返回的 JSON 只是"语法合法",结构必须由我们校验 ----
       const candidate = outcome.parsed ?? safeJsonParse(outcome.raw);
+      if (isTitleTask) {
+        const parsedTitle = titleResultPayloadSchema.safeParse(candidate);
+        if (!parsedTitle.success) {
+          const issues = parsedTitle.error.issues
+            .slice(0, 5)
+            .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+            .join('; ');
+          log.warn(`任务 ${taskId} 标题结构不合规:${issues}`);
+          if (structureRetries < MAX_STRUCTURE_RETRIES) {
+            structureRetries += 1;
+            extraInstruction = [
+              '请严格输出 {"titles":[{"text":"标题","charCount":12}]} 结构,不要输出正文或其他字段。',
+              `具体问题:${issues}`,
+            ].join('\n');
+            continue;
+          }
+          const message = '模型多次返回的标题结构不符合要求';
+          await failResult(taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, message);
+          await failTask(reporter, taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, message, queueWaitMs, true);
+          recordFailed(job.queueName);
+          return;
+        }
+
+        const maxLen = Math.min(120, Math.max(8, input.maxTitleLength ?? 60));
+        const expectedCount = Math.min(10, Math.max(1, input.titleCount ?? 5));
+        const normalized = parsedTitle.data.titles.map((item) => ({
+          text: item.text.trim(),
+          charCount: [...item.text.trim()].length,
+        }));
+        if (normalized.length < 1 || normalized.length > expectedCount) {
+          extraInstruction = `请输出 ${expectedCount} 条标题,当前数量不符合要求。`;
+          if (structureRetries < MAX_STRUCTURE_RETRIES) {
+            structureRetries += 1;
+            continue;
+          }
+          await failResult(taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题数量不符合要求');
+          await failTask(reporter, taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题数量不符合要求', queueWaitMs, true);
+          recordFailed(job.queueName);
+          return;
+        }
+        const tooLong = normalized.find((item) => item.charCount > maxLen);
+        if (tooLong) {
+          extraInstruction = `有标题超过 ${maxLen} 字,请缩短并保持语义完整,不要生硬截断。`;
+          if (structureRetries < MAX_STRUCTURE_RETRIES) {
+            structureRetries += 1;
+            continue;
+          }
+          await failResult(taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题长度超出限制');
+          await failTask(reporter, taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题长度超出限制', queueWaitMs, true);
+          recordFailed(job.queueName);
+          return;
+        }
+
+        await reporter.setStage('checking');
+        const check = await checkOutput({
+          platform,
+          fields: normalized.map((item, index) => ({ field: `titles[${index}]`, value: item.text })),
+          rewriteCount: contentRewrites,
+        });
+
+        const hasBlock = check.violations.some((v) => v.action === RuleAction.BLOCK);
+        if (hasBlock) {
+          await blockResult(taskId, check);
+          await failTask(
+            reporter,
+            taskId,
+            ERROR_CODES.CONTENT_BLOCKED_OUTPUT,
+            '标题未通过内容检查,已拦截',
+            queueWaitMs,
+            true,
+          );
+          recordFailed(job.queueName);
+          return;
+        }
+        if (needsRewrite(check)) {
+          if (contentRewrites < MAX_CONTENT_REWRITES) {
+            contentRewrites += 1;
+            extraInstruction = buildRewriteInstruction(check);
+            continue;
+          }
+          await blockResult(taskId, { ...check, passed: false });
+          await failTask(
+            reporter,
+            taskId,
+            ERROR_CODES.CONTENT_BLOCKED_OUTPUT,
+            '标题重写后仍未通过内容检查',
+            queueWaitMs,
+            true,
+          );
+          recordFailed(job.queueName);
+          return;
+        }
+
+        const titlePayload = { titles: normalized };
+        await prisma.generationResult.upsert({
+          where: { taskId_seq: { taskId, seq: 0 } },
+          create: {
+            taskId,
+            seq: 0,
+            status: ResultStatus.SUCCEEDED,
+            textPayload: titlePayload,
+            checkResult: { ...check, disclaimer: CONTENT_CHECK_DISCLAIMER },
+            finishedAt: new Date(),
+          },
+          update: {
+            status: ResultStatus.SUCCEEDED,
+            textPayload: titlePayload,
+            checkResult: { ...check, disclaimer: CONTENT_CHECK_DISCLAIMER },
+            errorCode: null,
+            errorMessage: null,
+            finishedAt: new Date(),
+          },
+        });
+        await reporter.finish({
+          status: TaskStatus.SUCCEEDED,
+          stage: 'done',
+          succeededCount: normalized.length,
+          failedCount: 0,
+          errorCode: null,
+          errorMessage: null,
+          retryable: false,
+          upstreamDurationMs,
+          queueWaitMs,
+          providerCallCount,
+        });
+        await clearDeferCount(job.id);
+        recordProcessed(job.queueName, Date.now() - jobStartedAt);
+        log.info(`任务 ${taskId} 标题生成完成: ${normalized.length} 条`);
+        return;
+      }
+
       const parsed = copyResultPayloadSchema.safeParse(candidate);
       if (!parsed.success) {
         const issues = parsed.error.issues
@@ -429,6 +598,23 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
 }
 
 // ---------------------------------------------------------------------------
+
+function buildTitleUserPrompt(input: CopyInput): string {
+  const parts: string[] = [];
+  if (input.productName) parts.push(`商品名称:${input.productName}`);
+  if (input.sellingPoints && input.sellingPoints.length > 0) {
+    parts.push(`卖点:\n${input.sellingPoints.map((p) => `- ${p}`).join('\n')}`);
+  }
+  if (input.keywords && input.keywords.length > 0) {
+    parts.push(`关键词:${input.keywords.join('、')}`);
+  }
+  if (input.targetPlatform) parts.push(`目标平台:${input.targetPlatform}`);
+  parts.push(
+    `需要 ${Math.min(10, Math.max(1, input.titleCount ?? 5))} 条候选标题,每条不超过 ${Math.min(120, Math.max(8, input.maxTitleLength ?? 60))} 字。`,
+  );
+  if (input.prompt) parts.push(`用户补充要求(不得违反前述规则):${input.prompt}`);
+  return parts.join('\n');
+}
 
 function buildUserPrompt(input: CopyInput): string {
   const parts: string[] = [];

@@ -82,6 +82,35 @@ export function maskSecret(secret: string): string {
 export const PASSWORD_DISPLAY_MASK = '••••••••';
 
 /**
+ * 手机号脱敏展示。保留本地号首 3 与末 4 位;国家/地区码原样保留。
+ * 例:`+86 13812345678` → `+86 138****5678`
+ */
+export function maskPhone(phone: string): string {
+  const raw = phone.trim();
+  if (!raw) return '****';
+
+  const countryMatch = raw.match(/^(\+\d{1,4})\s*/);
+  const country = countryMatch?.[1] ?? '';
+  const localRaw = countryMatch ? raw.slice(countryMatch[0].length) : raw;
+  const digits = localRaw.replace(/\D/g, '');
+
+  if (digits.length < 7) {
+    if (digits.length <= 2) {
+      const masked = '*'.repeat(Math.max(4, digits.length || 4));
+      return country ? `${country} ${masked}` : masked;
+    }
+    const short = `${digits.slice(0, 1)}${'*'.repeat(digits.length - 2)}${digits.slice(-1)}`;
+    return country ? `${country} ${short}` : short;
+  }
+
+  const prefix = digits.slice(0, 3);
+  const suffix = digits.slice(-4);
+  const middle = '*'.repeat(Math.min(4, Math.max(1, digits.length - 7)));
+  const maskedLocal = `${prefix}${middle}${suffix}`;
+  return country ? `${country} ${maskedLocal}` : maskedLocal;
+}
+
+/**
  * 结果区网格列数。按需求:单张大图、两张双列、三至四张合理网格、更多自动网格。
  */
 export function resultGridColumns(count: number): number {

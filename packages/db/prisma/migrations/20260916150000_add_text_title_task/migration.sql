@@ -1,0 +1,2 @@
+-- 标题生成独立任务类型
+ALTER TYPE "TaskType" ADD VALUE IF NOT EXISTS 'TEXT_TITLE';

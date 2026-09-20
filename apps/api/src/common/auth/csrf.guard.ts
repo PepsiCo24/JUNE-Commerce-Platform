@@ -1,11 +1,13 @@
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { CSRF_COOKIE, CSRF_HEADER, ERROR_CODES } from '@june/shared';
+import { SessionScope } from '@june/db';
+import { CSRF_COOKIE, CSRF_COOKIE_ADMIN, CSRF_HEADER, ERROR_CODES } from '@june/shared';
 
 import { CryptoService } from '../crypto/crypto.service';
 import { AppException } from '../errors/app-exception';
 import type { AuthenticatedRequest } from './auth-context';
 import { SKIP_CSRF_KEY } from './auth.decorators';
+import { SessionGuard } from './session.guard';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -14,7 +16,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  *
  * 采用双提交 Cookie + HMAC 绑定会话:
  *  1. 请求头 `x-june-csrf` 必须存在;
- *  2. 必须与 `june_csrf` Cookie 一致(常量时间比较);
+ *  2. 必须与当前作用域的 CSRF Cookie 一致(常量时间比较);
+ *     站点用 `june_csrf`,管理站用 `june_admin_csrf`,互不覆盖;
  *  3. 令牌的 HMAC 必须能用服务端密钥和当前会话令牌验证通过。
  *
  * 第 3 步是关键:即使攻击者能设置 Cookie(子域写入等场景),
@@ -44,8 +47,12 @@ export class CsrfGuard implements CanActivate {
     const sessionToken = request.authSession?.token;
     if (!sessionToken) return true;
 
+    const scope = request.authSession?.scope ?? SessionGuard.scopeOf(request.path);
+    const csrfCookie =
+      scope === SessionScope.ADMIN ? CSRF_COOKIE_ADMIN : CSRF_COOKIE;
+
     const headerValue = request.header(CSRF_HEADER);
-    const cookieValue = (request.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE];
+    const cookieValue = (request.cookies as Record<string, string> | undefined)?.[csrfCookie];
 
     if (!headerValue || !cookieValue) {
       throw new AppException(ERROR_CODES.CSRF_FAILED, 403);

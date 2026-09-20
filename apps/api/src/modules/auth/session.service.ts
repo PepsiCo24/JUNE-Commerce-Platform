@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ROLE_LEVEL, SessionScope, type RoleSlug } from '@june/db';
-import { SESSION_COOKIE_ADMIN, SESSION_COOKIE_SITE, userSseChannel } from '@june/shared';
+import {
+  CSRF_COOKIE,
+  CSRF_COOKIE_ADMIN,
+  SESSION_COOKIE_ADMIN,
+  SESSION_COOKIE_SITE,
+  userSseChannel,
+} from '@june/shared';
 import type { CookieOptions, Response } from 'express';
 
 import { CryptoService } from '../../common/crypto/crypto.service';
@@ -45,9 +51,20 @@ export class SessionService {
     return scope === SessionScope.ADMIN ? SESSION_COOKIE_ADMIN : SESSION_COOKIE_SITE;
   }
 
-  /** Cookie 路径隔离:管理员会话不会随普通请求一起发送 */
-  private cookiePath(scope: SessionScope): string {
-    return scope === SessionScope.ADMIN ? '/api/admin' : '/';
+  /** CSRF Cookie 按作用域隔离;路径仍为 /,以便 /admin 页面的 JS 能读取管理站 CSRF */
+  csrfCookieName(scope: SessionScope): string {
+    return scope === SessionScope.ADMIN ? CSRF_COOKIE_ADMIN : CSRF_COOKIE;
+  }
+
+  /**
+   * Cookie Path。
+   * 管理站页面在 `/admin/**`,接口在 `/api/admin/**`,两边都要能带上会话 Cookie:
+   * 中间件靠 Cookie 存在性做登录跳转优化,浏览器侧 `/admin/auth/me` 也要带会话。
+   * 与站点会话的隔离靠 **Cookie 名**(`june_admin_session` vs `june_session`)与
+   * SessionScope,不靠 Path(`/api/admin` 会导致页面请求带不上 Cookie,卡在校验会话)。
+   */
+  private cookiePath(_scope: SessionScope): string {
+    return '/';
   }
 
   private cookieOptions(scope: SessionScope, maxAgeMs: number): CookieOptions {
@@ -56,6 +73,17 @@ export class SessionService {
       secure: this.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: this.cookiePath(scope),
+      maxAge: maxAgeMs,
+      ...(this.env.COOKIE_DOMAIN ? { domain: this.env.COOKIE_DOMAIN } : {}),
+    };
+  }
+
+  private csrfCookieOptions(maxAgeMs: number): CookieOptions {
+    return {
+      httpOnly: false,
+      secure: this.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
       maxAge: maxAgeMs,
       ...(this.env.COOKIE_DOMAIN ? { domain: this.env.COOKIE_DOMAIN } : {}),
     };
@@ -97,25 +125,42 @@ export class SessionService {
     });
 
     const csrfToken = this.crypto.signCsrfToken(token);
+    const maxAgeMs = ttlHours * 3_600_000;
 
-    response.cookie(this.cookieName(scope), token, this.cookieOptions(scope, ttlHours * 3_600_000));
+    // 登录前清掉同名旧 Cookie(含历史 Path=/api/admin),避免浏览器并存两份
+    this.clearCookies(response, scope);
+    response.cookie(this.cookieName(scope), token, this.cookieOptions(scope, maxAgeMs));
     // CSRF Cookie 必须可被前端 JS 读取以回填请求头,因此不是 HttpOnly。
-    // 它本身不构成凭据:攻击者即使猜到也无法读取跨站的会话 Cookie。
-    response.cookie('june_csrf', csrfToken, {
-      httpOnly: false,
-      secure: this.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: ttlHours * 3_600_000,
-      ...(this.env.COOKIE_DOMAIN ? { domain: this.env.COOKIE_DOMAIN } : {}),
-    });
+    // 按 scope 分名:站点与管理站会话互不影响,避免后登录覆盖导致 HMAC 校验失败。
+    response.cookie(this.csrfCookieName(scope), csrfToken, this.csrfCookieOptions(maxAgeMs));
 
     return { token, csrfToken, expiresAt };
   }
 
+  /**
+   * 为已有会话刷新 CSRF Cookie(例如 /me 自愈)。
+   * 不签发新会话,只重绑当前会话令牌的 CSRF。
+   */
+  refreshCsrfCookie(params: {
+    scope: SessionScope;
+    sessionToken: string;
+    response: Response;
+    maxAgeMs?: number;
+  }): string {
+    const csrfToken = this.crypto.signCsrfToken(params.sessionToken);
+    const maxAgeMs = params.maxAgeMs ?? this.env.SESSION_TTL_HOURS * 3_600_000;
+    params.response.cookie(this.csrfCookieName(params.scope), csrfToken, this.csrfCookieOptions(maxAgeMs));
+    return csrfToken;
+  }
+
   clearCookies(response: Response, scope: SessionScope): void {
-    response.clearCookie(this.cookieName(scope), { path: this.cookiePath(scope) });
-    response.clearCookie('june_csrf', { path: '/' });
+    const name = this.cookieName(scope);
+    // 当前 Path=/;同时清掉历史 Path=/api/admin 残留,避免旧 Cookie 干扰中间件判断
+    response.clearCookie(name, { path: '/' });
+    if (scope === SessionScope.ADMIN) {
+      response.clearCookie(name, { path: '/api/admin' });
+    }
+    response.clearCookie(this.csrfCookieName(scope), { path: '/' });
   }
 
   /** 撤销单个会话(当前设备退出) */

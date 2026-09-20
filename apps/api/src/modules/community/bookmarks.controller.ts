@@ -3,7 +3,7 @@ import {
   bookmarkListQuerySchema,
   idSchema,
   type BookmarkListQuery,
-  type CursorResult,
+  type PageResult,
   type PostListItem,
 } from '@june/shared';
 
@@ -21,7 +21,7 @@ export class BookmarksController {
   async listMine(
     @CurrentUser() user: AuthUser,
     @Query(zodQuery(bookmarkListQuerySchema)) query: BookmarkListQuery,
-  ): Promise<CursorResult<PostListItem>> {
+  ): Promise<PageResult<PostListItem>> {
     return this.bookmarks.listMine(user, query);
   }
 

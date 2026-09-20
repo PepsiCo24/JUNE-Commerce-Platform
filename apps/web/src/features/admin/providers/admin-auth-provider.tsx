@@ -13,7 +13,8 @@ import { ADMIN_PATHS } from '@/features/admin/api/paths';
  * 与站点 `AuthProvider` 的区别:
  *  - 探测的是 `/admin/auth/me`,不是 `/auth/me`;
  *  - Cookie 是 `june_admin_session`,站点会话无法进入 /admin;
- *  - CSRF 不走站点模块级内存令牌,写请求由 `adminApi` 从 `june_csrf` Cookie 回填。
+ *  - CSRF 使用独立 Cookie `june_admin_csrf`,写请求由 `adminApi` 从该 Cookie 回填。
+ *    打开管理站时 `/admin/auth/me` 会刷新该 Cookie,无需额外登录即可自愈。
  *
  * 权限判断的最终依据仍在后端;这里只决定界面显示什么。
  */
@@ -76,11 +77,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }): React.
     if (redirectingRef.current) return;
     redirectingRef.current = true;
     const current = `${window.location.pathname}${window.location.search}`;
-    router.replace(`${LOGIN_PATH}?redirect=${encodeURIComponent(current)}`);
-    window.setTimeout(() => {
-      redirectingRef.current = false;
-    }, 1500);
-  }, [isLoading, pathname, user, router]);
+    // 硬跳转:避免 App Router soft nav 与中间件 Cookie 判断不同步时卡在校验页
+    window.location.replace(`${LOGIN_PATH}?redirect=${encodeURIComponent(current)}`);
+  }, [isLoading, pathname, user]);
 
   const value = useMemo<AdminAuthContextValue>(
     () => ({

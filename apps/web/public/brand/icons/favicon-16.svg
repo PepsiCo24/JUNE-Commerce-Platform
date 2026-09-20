@@ -1,50 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   JUNE favicon — 16×16 像素栅格专版
-
-  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
-
-  这不是 icon.svg 的等比缩小,而是按 16px 像素网格重新绘制的一版。
-  理由:64 栅格上的 12 / 52 / 34 等坐标除以 4 后会落在小数上,
-  光栅化时每条笔画都会被抗锯齿摊成两排半灰像素,整枚图标发虚。
-
-  像素对齐做法:
-    · viewBox 0 0 16 16,1 用户单位 = 1 物理像素
-    · 直笔画全部用 rect 绘制,x / y / width / height 均为整数,
-      因此每条笔画的四条边都精确压在像素边界上,不产生半像素
-    · 笔画宽 2px;图形墨迹落在 3..13(10×10),四周留 3px
-    · 底板为深靛蓝圆角矩形(rx=3),保证在浅色与深色标签栏上都可读
-
-  进一步简化(相对 icon-simplified.svg):
-    · 中横保留但缩短到 5px:三道横画各占 2 行像素、之间各留 2 行空白,
-      正好填满 3..13 的 10 行,行行对齐,没有任何半像素
-    · 去掉下横的缺口(3 单位缺口在 16px 下不足 1 像素,只会变成锯齿)
-    · 去掉紫色连接点 —— 在 16px 下它只有约 1 物理像素,
-      只会让连接处变成一个脏点,反而损害轮廓,因此整枚图标只留青绿单色
-    · 圆角笔画端改为直角,圆角在 2px 笔画上不可见却会吃掉锐度
-
-  取色:底 indigo[900] #101426 / 图形 teal[400] #56DECD(对底 11.3:1)
+  左 J(竖 + 左钩) + 右 E 三横,象牙白单色。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"
      preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
   <title>JUNE</title>
 
-  <!-- 深靛蓝圆角底板 -->
   <rect x="0" y="0" width="16" height="16" rx="3" ry="3" fill="#101426" />
 
-  <g fill="#56DECD">
-    <!-- E:竖脊 3..5 x 3..13 -->
-    <rect x="3" y="3" width="2" height="10" />
-    <!-- E:上横 3..13 x 3..5(右端延伸出去变成 J 的竖笔起点) -->
-    <rect x="3" y="3" width="10" height="2" />
-    <!-- E:中横 3..8 x 7..9(上下各留 2 物理像素白间隙) -->
-    <rect x="3" y="7" width="5" height="2" />
-    <!-- E:下横 3..9 x 11..13 -->
-    <rect x="3" y="11" width="6" height="2" />
-    <!-- J:竖笔 11..13 x 3..9 -->
-    <rect x="11" y="3" width="2" height="6" />
+  <g fill="#F8F6EF">
+    <!-- J stem -->
+    <rect x="3" y="3" width="2" height="8" />
+    <!-- E top / mid / bottom -->
+    <rect x="6" y="3" width="7" height="2" />
+    <rect x="7" y="7" width="5" height="2" />
+    <rect x="6" y="11" width="7" height="2" />
   </g>
-
-  <!-- J:四分之一圆弧,圆心 (9,9) 半径 3,接回下横右端 -->
-  <path d="M12 9 A3 3 0 0 1 9 12" fill="none" stroke="#56DECD" stroke-width="2" />
+  <!-- J left hook -->
+  <path d="M4 11 A3 3 0 0 1 2 13" fill="none" stroke="#F8F6EF" stroke-width="2" stroke-linecap="round" />
 </svg>

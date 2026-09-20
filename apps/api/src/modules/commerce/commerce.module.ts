@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 
 import { AssetsModule } from '../assets/assets.module';
 import { StorageModule } from '../storage/storage.module';
+import { AlipayAccountsController } from './alipay.controller';
+import { AlipayAccountsService } from './alipay.service';
 import { CredentialsController } from './credentials.controller';
 import { CredentialsService } from './credentials.service';
 import { ProductImportController } from './product-import.controller';
@@ -12,7 +14,7 @@ import { ShopsController } from './shops.controller';
 import { ShopsService } from './shops.service';
 
 /**
- * 店铺 / 凭据 / 商品模块。
+ * 店铺 / 凭据 / 商品 / 支付宝账户模块。
  *
  * 依赖说明:
  *  - AssetsModule:商品图片的归属校验与引用计数(生图结果复用同一 Asset);
@@ -27,10 +29,23 @@ import { ShopsService } from './shops.service';
   controllers: [
     ShopsController,
     CredentialsController,
+    AlipayAccountsController,
     ProductImportController,
     ProductsController,
   ],
-  providers: [ShopsService, CredentialsService, ProductsService, ProductImportService],
-  exports: [ShopsService, CredentialsService, ProductsService, ProductImportService],
+  providers: [
+    ShopsService,
+    CredentialsService,
+    AlipayAccountsService,
+    ProductsService,
+    ProductImportService,
+  ],
+  exports: [
+    ShopsService,
+    CredentialsService,
+    AlipayAccountsService,
+    ProductsService,
+    ProductImportService,
+  ],
 })
 export class CommerceModule {}

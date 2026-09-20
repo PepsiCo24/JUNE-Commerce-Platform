@@ -37,10 +37,14 @@ export function useShopOptions(): UseQueryResult<ShopSummary[]> {
  * 后端已按 ownerId 过滤,所以"保存到商品"只会出现有权限的商品
  * —— 前端不做权限决策,只呈现后端给出的可选集合。
  */
-export function useProductOptions(q = ''): UseQueryResult<ProductOption[]> {
+export function useProductOptions(q = '', shopId?: string | null): UseQueryResult<ProductOption[]> {
   return useQuery({
-    queryKey: workbenchKeys.productOptions(q),
-    queryFn: () => api.get<ProductOption[]>('/products/options', { query: { q: q || undefined, limit: 50 } }),
+    queryKey: workbenchKeys.productOptions(q, shopId ?? undefined),
+    queryFn: () =>
+      api.get<ProductOption[]>('/products/options', {
+        query: { q: q || undefined, shopId: shopId ?? undefined, limit: 50 },
+      }),
     staleTime: 15_000,
+    enabled: shopId ? Boolean(shopId) : true,
   });
 }

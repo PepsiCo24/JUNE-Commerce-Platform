@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/toggle';
 import { api } from '@/lib/api/client';
 import { describeError } from '@/lib/api/errors';
 
-import { useProductOptions } from '../hooks/use-options';
+import { useProductOptions, useShopOptions } from '../hooks/use-options';
 import type { SaveResultsResponse } from '../lib/api-types';
 
 export function SaveToProductDialog({
@@ -25,11 +25,13 @@ export function SaveToProductDialog({
   taskId: string;
   resultIds: string[];
 }): React.JSX.Element {
+  const [shopId, setShopId] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [productId, setProductId] = useState<string | null>(null);
   const [setAsCover, setSetAsCover] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const optionsQuery = useProductOptions(q);
+  const shopsQuery = useShopOptions();
+  const optionsQuery = useProductOptions(q, shopId);
 
   const options = useMemo(
     () =>
@@ -89,12 +91,25 @@ export function SaveToProductDialog({
       }
     >
       <div className="space-y-4">
-        <Field label="搜索商品" htmlFor="save-product-q">
+        <Field label="店铺" htmlFor="save-shop-id" required>
+          <Select
+            id="save-shop-id"
+            value={shopId}
+            onChange={(value) => {
+              setShopId(value);
+              setProductId(null);
+            }}
+            options={(shopsQuery.data ?? []).map((shop) => ({ value: shop.id, label: shop.name }))}
+            placeholder={shopsQuery.isLoading ? '加载店铺' : '先选择店铺'}
+          />
+        </Field>
+        <Field label="搜索本店商品" htmlFor="save-product-q">
           <Input
             id="save-product-q"
             value={q}
             onChange={(event) => setQ(event.target.value)}
             placeholder="名称或 SKU"
+            disabled={!shopId}
           />
         </Field>
         <Field label="目标商品" htmlFor="save-product-id" required>
@@ -103,7 +118,8 @@ export function SaveToProductDialog({
             value={productId}
             onChange={setProductId}
             options={options}
-            placeholder={optionsQuery.isLoading ? '加载中' : '选择商品'}
+            placeholder={!shopId ? '请先选择店铺' : optionsQuery.isLoading ? '加载中' : '选择商品'}
+            disabled={!shopId}
           />
         </Field>
         <Checkbox

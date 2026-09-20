@@ -101,7 +101,10 @@ export function useAuthFormState(): AuthFormState {
 
     const parsed = schema.safeParse(values);
     if (!parsed.success) {
-      setFieldErrors(zodFieldErrors(parsed.error));
+      const errors = zodFieldErrors(parsed.error);
+      setFieldErrors(errors);
+      const first = parsed.error.issues[0]?.message;
+      setFormError(first ?? '请检查表单填写是否正确');
       return false;
     }
 

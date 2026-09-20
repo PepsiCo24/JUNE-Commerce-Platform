@@ -27,7 +27,7 @@ import { useShopGraph } from '../hooks/use-shops';
 import { SHOP_TYPE_LABEL } from '../lib/format';
 
 const NODE_WIDTH = 220;
-const NODE_HEIGHT = 96;
+const NODE_HEIGHT = 112;
 
 type ShopNodeData = {
   name: string;
@@ -35,6 +35,7 @@ type ShopNodeData = {
   status: 'ACTIVE' | 'PAUSED' | 'CLOSED';
   productCount: number;
   platform: string | null;
+  platformAccount: string | null;
 };
 
 function layout(nodes: Array<Node<ShopNodeData>>, edges: Edge[]): { nodes: Array<Node<ShopNodeData>>; edges: Edge[] } {
@@ -75,6 +76,11 @@ function ShopNode({ data }: NodeProps<Node<ShopNodeData>>): React.JSX.Element {
         <span className="tabular text-xs text-fg-muted">{data.productCount} 商品</span>
       </div>
       {data.platform ? <p className="mt-1 truncate text-xs text-fg-subtle">{data.platform}</p> : null}
+      {data.platformAccount ? (
+        <p className="truncate text-xs text-fg-muted" title={data.platformAccount}>
+          {data.platformAccount}
+        </p>
+      ) : null}
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 opacity-0" />
     </div>
   );
@@ -97,6 +103,7 @@ export function ShopGraphPage(): React.JSX.Element {
         status: node.status,
         productCount: node.productCount,
         platform: node.platform,
+        platformAccount: node.platformAccount,
       },
       position: { x: 0, y: 0 },
     }));

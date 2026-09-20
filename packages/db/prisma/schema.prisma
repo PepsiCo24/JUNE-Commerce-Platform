@@ -59,6 +59,7 @@ model User {
   bookmarks       Bookmark[]
   shops           Shop[]
   products        Product[]
+  alipayAccounts  AlipayAccount[]
   assets          Asset[]
   generationTasks GenerationTask[]
   auditLogs       AuditLog[]        @relation("AuditActor")
@@ -165,12 +166,23 @@ enum PostStatus {
   DELETED // 软删除
 }
 
+/// 帖子分类(社区信息流筛选)
+enum PostCategory {
+  DISCUSSION
+  QUESTION
+  SHOWCASE
+  GUIDE
+  RESOURCE
+  OTHER
+}
+
 model Post {
   id     String     @id @default(cuid())
   /// 稳定公开链接使用的 slug,发布时生成且不再变化
   slug   String     @unique
   authorId String
   status PostStatus @default(DRAFT)
+  category PostCategory @default(DISCUSSION)
 
   title   String  @db.VarChar(200)
   /// 服务端清洗后的富文本 HTML(唯一渲染来源)
@@ -219,6 +231,7 @@ model Post {
   @@index([status, hotScore(sort: Desc), publishedAt(sort: Desc)])
   @@index([status, likeCount(sort: Desc), publishedAt(sort: Desc)])
   @@index([status, commentCount(sort: Desc), publishedAt(sort: Desc)])
+  @@index([status, category, likeCount(sort: Desc), publishedAt(sort: Desc)])
   @@index([authorId, status, updatedAt(sort: Desc)])
   @@index([createdAt])
   @@map("posts")
@@ -311,6 +324,8 @@ model Shop {
 
   name        String  @db.VarChar(120)
   platform    String? @db.VarChar(60)
+  /// 平台账号用户名(与店铺名称独立)。允许冒号、中文等实际账号字符,例如 tb8552962760:湾湾
+  platformAccount String? @db.VarChar(200)
   url         String? @db.VarChar(500)
   description String? @db.VarChar(1000)
   contactName String? @db.VarChar(80)
@@ -333,9 +348,11 @@ model Shop {
   children    Shop[]           @relation("ShopHierarchy")
   credentials ShopCredential[]
   products    Product[]
+  alipayAccounts AlipayAccount[]
 
   @@index([ownerId, type, deletedAt])
   @@index([ownerId, name])
+  @@index([ownerId, platformAccount])
   @@index([parentId])
   @@map("shops")
 }
@@ -348,10 +365,12 @@ model ShopCredential {
   /// 冗余 ownerId,便于在不 join 的情况下做归属校验
   ownerId String
 
-  purpose  String  @db.VarChar(120) // 用途:如"卖家后台""客服系统"
+  purpose  String  @db.VarChar(120) // 用途:如"卖家后台""客服系统"；主要登录账号用固定常量
   account  String  @db.VarChar(200)
   loginUrl String? @db.VarChar(500)
   note     String? @db.VarChar(1000)
+  /// 是否为该店铺的「主要登录账号」。密码只存于此,不在 shops 表重复。每店至多一条(应用层保证)
+  isPrimary Boolean @default(false)
 
   /// 密文(base64)。keyVersion 用于密钥轮换
   passwordCipher String
@@ -370,7 +389,45 @@ model ShopCredential {
   @@index([shopId, deletedAt])
   @@index([ownerId])
   @@index([shopId, purpose])
+  @@index([shopId, isPrimary, deletedAt])
   @@map("shop_credentials")
+}
+
+/// 用户的支付宝登录账户信息(仅登录凭据,不含支付能力)。
+/// 密码使用与 ShopCredential 相同的 AES-256-GCM 服务端加密;普通接口不返回明文。
+model AlipayAccount {
+  id      String @id @default(cuid())
+  ownerId String
+
+  /// 账户名称/备注名,用于区分不同账户
+  name  String @db.VarChar(120)
+  /// 绑定手机号(完整字符串,可含国家/地区码)。列表接口只返回脱敏值
+  phone String @db.VarChar(40)
+
+  passwordCipher    String
+  passwordIv        String
+  passwordTag       String
+  keyVersion        Int      @default(1)
+  passwordUpdatedAt DateTime @default(now()) @db.Timestamptz(3)
+  /// 是否已设置密码。清除密码后为 false,密文字段保留占位空密文或清空由应用层处理
+  hasPassword       Boolean  @default(true)
+
+  note   String? @db.VarChar(1000)
+  /// 可选关联本人店铺;关联不等于共享权限
+  shopId String?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shop  Shop? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, deletedAt, updatedAt(sort: Desc)])
+  @@index([ownerId, name])
+  @@index([ownerId, phone])
+  @@index([shopId])
+  @@map("alipay_accounts")
 }
 
 enum ProductStatus {
@@ -659,6 +716,7 @@ enum TaskType {
   IMAGE_GENERATE
   IMAGE_EDIT
   TEXT_COPY
+  TEXT_TITLE
 }
 
 enum TaskStatus {

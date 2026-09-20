@@ -1,38 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  JUNE PWA 应用图标 — 192×192(purpose="maskable")
-
-  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
-
-  maskable 安全区
-    Android / Chrome 会用任意形状(圆形、squircle、水滴等)裁切应用图标,
-    规范只保证居中直径 80% 的圆形内的内容一定不被裁掉。
-      · 本图标 192 × 80% = 153.6,安全圆半径 = 76.8,圆心 (96, 96)
-      · 图形墨迹 ×2 后为 96×96,落在 48..144,其外接圆半径 = 48×√2 约 67.9
-      · 67.9 < 76.8,图形完全位于安全区内,任何遮罩形状下都不会被切
-    底板铺满整幅 192×192 且不透明,因此裁切后不会出现透明角。
-
-  配色与 apple-touch-icon.svg 保持一致(单色青绿 + 紫色节点),
-  这样 iOS 主屏与 Android 主屏上的图标是同一个样子:
-    · 底 indigo[900] #101426 / 图形 teal[400] #56DECD / 连接点 purple[400] #9B8AFB
-
-  使用:在 manifest.webmanifest 中以 PNG 形式引用,见 scripts/generate-rasters.mjs。
+  JUNE PWA 应用图标 — 192×192(maskable)
+  设计稿 app icon:深底 + 象牙白单色 JE。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192"
      preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
   <title>JUNE</title>
 
-  <!-- 满幅不透明底板 -->
   <rect x="0" y="0" width="192" height="192" fill="#101426" />
 
-  <!-- 完整细节图形,×2 居中,外接圆半径约 67.9,小于安全圆半径 76.8 -->
-  <g transform="translate(32 32) scale(2)">
-    <g fill="none" stroke="#56DECD" stroke-width="8"
+  <g transform="translate(48 48) scale(1.5)">
+    <g fill="none" stroke="#F8F6EF" stroke-width="8"
        stroke-linecap="round" stroke-linejoin="round">
-      <path d="M52 12 H12 V51 H22" />
-      <path d="M12 31 H30" />
-      <path d="M52 12 V33 A18 18 0 0 1 34 51" />
+      <path d="M28 12 H52" />
+      <path d="M34 31 H48" />
+      <path d="M30 51 H52" />
+      <path d="M20 12 V36 A16 16 0 0 1 8 52" />
     </g>
-    <circle cx="28" cy="51" r="5" fill="#9B8AFB" />
   </g>
 </svg>

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
  */
 export function PasswordInput({
   id,
+  name,
   value,
   onChange,
   invalid,
@@ -22,6 +23,7 @@ export function PasswordInput({
   describedBy,
 }: {
   id?: string;
+  name?: string;
   value: string;
   onChange: (value: string) => void;
   invalid?: boolean;
@@ -39,6 +41,7 @@ export function PasswordInput({
     <div className={cn('relative', className)}>
       <Input
         id={inputId}
+        name={name}
         type={visible ? 'text' : 'password'}
         value={value}
         onChange={(event) => onChange(event.target.value)}

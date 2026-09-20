@@ -27,12 +27,41 @@ export const PAGE_SIZE_MAX = 100;
 // ---------------------------------------------------------------------------
 /**
  * 帖子大厅排序。
+ * - most_liked: 点赞数(默认,信息流按互动优先)
  * - latest: 发布时间
- * - most_liked / most_commented: 点赞数 / 评论数(与 hot 不同)
+ * - most_commented: 评论数
  * - hot: 加权热度分(点赞+评论+浏览+时间衰减),定时重算
  */
-export const POST_SORT_OPTIONS = ['latest', 'most_liked', 'most_commented', 'hot'] as const;
+export const POST_SORT_OPTIONS = ['most_liked', 'latest', 'most_commented', 'hot'] as const;
 export type PostSort = (typeof POST_SORT_OPTIONS)[number];
+
+/** 大厅默认排序:按点赞量 */
+export const POST_SORT_DEFAULT: PostSort = 'most_liked';
+
+/**
+ * 帖子分类(固定枚举,前后端共用)。
+ * 标签文案见 POST_CATEGORY_LABELS。
+ */
+export const POST_CATEGORIES = [
+  'discussion',
+  'question',
+  'showcase',
+  'guide',
+  'resource',
+  'other',
+] as const;
+export type PostCategory = (typeof POST_CATEGORIES)[number];
+
+export const POST_CATEGORY_DEFAULT: PostCategory = 'discussion';
+
+export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
+  discussion: '讨论',
+  question: '提问',
+  showcase: '晒单',
+  guide: '攻略',
+  resource: '资源',
+  other: '其他',
+};
 
 /** 社区搜索结果类型 */
 export const COMMUNITY_SEARCH_TYPES = ['all', 'posts', 'users'] as const;
@@ -73,6 +102,13 @@ export const DRAFT_AUTOSAVE_DEBOUNCE_MS = 1200;
 // 店铺 / 商品
 // ---------------------------------------------------------------------------
 export const SHOP_NAME_MAX = 120;
+/** 平台账号用户名最大长度(允许冒号、中文等) */
+export const PLATFORM_ACCOUNT_MAX = 200;
+/** 店铺主要登录凭据的固定用途名(列表可识别;真正判定看 isPrimary) */
+export const PRIMARY_LOGIN_PURPOSE = '主要登录账号';
+/** 支付宝账户名称最大长度 */
+export const ALIPAY_ACCOUNT_NAME_MAX = 120;
+export const ALIPAY_PHONE_MAX = 40;
 /** 主子店层级上限,防止无意义的深层嵌套(当前业务只使用 主店 -> 子店 两级) */
 export const SHOP_MAX_DEPTH = 2;
 
@@ -208,7 +244,10 @@ export const CONFIG_SYNC_TARGET_MS = 2_000;
 // 安全
 // ---------------------------------------------------------------------------
 export const CSRF_HEADER = 'x-june-csrf';
+/** 站点会话绑定的 CSRF Cookie(可读,供双提交) */
 export const CSRF_COOKIE = 'june_csrf';
+/** 管理站会话绑定的 CSRF Cookie;与站点隔离,避免互相覆盖导致 HMAC 校验失败 */
+export const CSRF_COOKIE_ADMIN = 'june_admin_csrf';
 export const SESSION_COOKIE_SITE = 'june_session';
 export const SESSION_COOKIE_ADMIN = 'june_admin_session';
 /** 查看店铺密码需要的重新验证令牌请求头 */

@@ -1,15 +1,19 @@
+import type { PostCategory } from '../constants';
 import { z } from 'zod';
 
 import {
   COMMENT_MAX,
   COMMUNITY_SEARCH_TYPES,
+  POST_CATEGORIES,
+  POST_CATEGORY_DEFAULT,
   POST_CONTENT_MAX_BYTES,
   POST_EXCERPT_MAX,
   POST_MAX_IMAGES,
+  POST_SORT_DEFAULT,
   POST_SORT_OPTIONS,
   POST_TITLE_MAX,
 } from '../constants';
-import { cursorQuerySchema, idSchema } from './common';
+import { cursorQuerySchema, idSchema, pageQuerySchema } from './common';
 
 // ---------------------------------------------------------------------------
 // 帖子
@@ -26,12 +30,15 @@ export const postContentHtmlSchema = z
   .max(POST_CONTENT_MAX_BYTES, '正文内容过长')
   .refine((v) => v.trim().length > 0, { message: '正文不能为空' });
 
+export const postCategorySchema = z.enum(POST_CATEGORIES);
+
 export const postDraftSaveSchema = z.object({
   title: z.string().trim().max(POST_TITLE_MAX).default(''),
   contentHtml: z.string().max(POST_CONTENT_MAX_BYTES).default(''),
   contentJson: z.unknown().optional(),
   coverAssetId: idSchema.nullable().optional(),
   imageAssetIds: z.array(idSchema).max(POST_MAX_IMAGES).default([]),
+  category: postCategorySchema.default(POST_CATEGORY_DEFAULT),
   /**
    * 客户端持有的草稿版本号。服务端仅在 revision >= 当前值时接受写入,
    * 从而防止乱序到达的旧自动保存请求覆盖新内容。
@@ -47,12 +54,16 @@ export const postPublishSchema = z.object({
   excerpt: z.string().trim().max(POST_EXCERPT_MAX).optional(),
   coverAssetId: idSchema.nullable().optional(),
   imageAssetIds: z.array(idSchema).max(POST_MAX_IMAGES).default([]),
+  category: postCategorySchema.default(POST_CATEGORY_DEFAULT),
 });
 export type PostPublishInput = z.infer<typeof postPublishSchema>;
 
-export const postListQuerySchema = cursorQuerySchema.extend({
-  sort: z.enum(POST_SORT_OPTIONS).default('latest'),
+/** 帖子大厅 / 个人主页:页码分页,状态写进 URL(?page=) */
+export const postListQuerySchema = pageQuerySchema.extend({
+  sort: z.enum(POST_SORT_OPTIONS).default(POST_SORT_DEFAULT),
   q: z.string().trim().max(120).optional(),
+  /** 按分类筛选;不传或 all 表示全部分类 */
+  category: z.union([z.literal('all'), postCategorySchema]).default('all'),
   /** 只看自己的帖子(我的创作) */
   mine: z.coerce.boolean().default(false),
   /** 指定作者的公开帖子(个人主页) */
@@ -60,12 +71,12 @@ export const postListQuerySchema = cursorQuerySchema.extend({
 });
 export type PostListQuery = z.infer<typeof postListQuerySchema>;
 
-export const myPostListQuerySchema = cursorQuerySchema.extend({
+export const myPostListQuerySchema = pageQuerySchema.extend({
   status: z.enum(['ALL', 'DRAFT', 'PUBLISHED', 'HIDDEN']).default('ALL'),
   q: z.string().trim().max(120).optional(),
 });
 
-export const bookmarkListQuerySchema = cursorQuerySchema.extend({
+export const bookmarkListQuerySchema = pageQuerySchema.extend({
   q: z.string().trim().max(120).optional(),
 });
 export type BookmarkListQuery = z.infer<typeof bookmarkListQuerySchema>;
@@ -112,6 +123,7 @@ export interface PostListItem {
   slug: string;
   title: string;
   excerpt: string | null;
+  category: PostCategory;
   coverUrl: string | null;
   coverWidth: number | null;
   coverHeight: number | null;
@@ -155,6 +167,7 @@ export interface PostDraftDetail {
   contentJson: unknown;
   coverAssetId: string | null;
   imageAssetIds: string[];
+  category: PostCategory;
   revision: number;
   updatedAt: string;
 }

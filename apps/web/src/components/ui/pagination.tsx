@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -118,18 +119,38 @@ export function Pagination({
   );
 }
 
-/** 游标分页的"加载更多" */
+/** 游标分页的"加载更多"。默认进入视口后自动拉取(无限滚动),也可手动点击。 */
 export function LoadMore({
   hasMore,
   loading,
   onLoadMore,
   className,
+  /** 视口进入时自动加载,默认开启 */
+  infinite = true,
 }: {
   hasMore: boolean;
   loading: boolean;
   onLoadMore: () => void;
   className?: string;
+  infinite?: boolean;
 }): React.JSX.Element {
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!infinite || !hasMore || loading) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
+      },
+      { rootMargin: '240px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, infinite, loading, onLoadMore]);
+
   if (!hasMore) {
     return (
       <p className={cn('py-4 text-center text-xs text-fg-subtle', className)} aria-live="polite">
@@ -139,7 +160,8 @@ export function LoadMore({
   }
 
   return (
-    <div className={cn('flex justify-center py-4', className)}>
+    <div className={cn('flex flex-col items-center gap-2 py-4', className)}>
+      <div ref={sentinelRef} className="h-1 w-full" aria-hidden />
       <Button variant="secondary" size="md" loading={loading} onClick={onLoadMore}>
         {loading ? '加载中' : '加载更多'}
       </Button>

@@ -2,12 +2,16 @@
 
 import {
   COMMUNITY_SEARCH_TYPES,
+  POST_CATEGORIES,
+  POST_CATEGORY_LABELS,
+  POST_SORT_DEFAULT,
   POST_SORT_OPTIONS,
   type CommunitySearchType,
   type CommunityUserSummary,
+  type PostCategory,
   type PostSort,
 } from '@june/shared';
-import { PenLine, Pin, Search, UserRound, X } from 'lucide-react';
+import { PenLine, Pin, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -15,15 +19,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState, ErrorState } from '@/components/feedback/states';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { LoadMore } from '@/components/ui/pagination';
 import { Separator } from '@/components/ui/separator';
-import { Tabs } from '@/components/ui/tabs';
 import { cn, formatCount } from '@/lib/utils';
 
 import { useCommunityListSync } from '../hooks/use-community-sse';
-import { usePostList, useUserSearch } from '../hooks/use-post-list';
-import { HotSortHint } from './hot-sort-hint';
+import { useInfinitePostList, useUserSearch } from '../hooks/use-post-list';
+import { CommunityHallToolbar } from '../layout/community-hall-toolbar';
 import { PostCard } from './post-card';
 import { PostGridSkeleton } from './post-card-skeleton';
 
@@ -48,7 +50,7 @@ const PERSONAL_NAV = [
 function parseSort(value: string | null): PostSort {
   return (POST_SORT_OPTIONS as readonly string[]).includes(value ?? '')
     ? (value as PostSort)
-    : 'latest';
+    : POST_SORT_DEFAULT;
 }
 
 function parseSearchType(value: string | null): CommunitySearchType {
@@ -57,10 +59,15 @@ function parseSearchType(value: string | null): CommunitySearchType {
     : 'all';
 }
 
+function parseCategory(value: string | null): PostCategory | 'all' {
+  if (!value || value === 'all') return 'all';
+  return (POST_CATEGORIES as readonly string[]).includes(value) ? (value as PostCategory) : 'all';
+}
+
 /**
- * 帖子大厅(单列信息流)。
- *
- * 搜索词、类型、排序都写进 URL query:链接可分享、前进后退可回到同一份结果。
+ * 帖子大厅(紧凑信息流)。
+ * 搜索词、类型、分类、排序写进 URL query,可分享、可前进后退。
+ * 默认按点赞量排序;列表底部无限滚动懒加载。
  */
 export function PostHall(): React.JSX.Element {
   const router = useRouter();
@@ -69,6 +76,7 @@ export function PostHall(): React.JSX.Element {
 
   const sort = parseSort(searchParams.get('sort'));
   const type = parseSearchType(searchParams.get('type'));
+  const category = parseCategory(searchParams.get('category'));
   const q = searchParams.get('q')?.trim() ?? '';
 
   const [keyword, setKeyword] = useState(q);
@@ -83,11 +91,17 @@ export function PostHall(): React.JSX.Element {
   }, [q]);
 
   const pushQuery = useCallback(
-    (next: { q?: string; sort?: PostSort; type?: CommunitySearchType }) => {
+    (next: {
+      q?: string;
+      sort?: PostSort;
+      type?: CommunitySearchType;
+      category?: PostCategory | 'all';
+    }) => {
       const params = new URLSearchParams(searchParams.toString());
       const nextQ = next.q !== undefined ? next.q : q;
       const nextSort = next.sort ?? sort;
       const nextType = next.type ?? type;
+      const nextCategory = next.category ?? category;
 
       if (nextQ) params.set('q', nextQ);
       else params.delete('q');
@@ -95,14 +109,20 @@ export function PostHall(): React.JSX.Element {
       if (nextType === 'all') params.delete('type');
       else params.set('type', nextType);
 
-      if (nextType === 'users' || nextSort === 'latest') params.delete('sort');
+      if (nextCategory === 'all') params.delete('category');
+      else params.set('category', nextCategory);
+
+      if (nextType === 'users' || nextSort === POST_SORT_DEFAULT) params.delete('sort');
       else params.set('sort', nextSort);
+
+      // 大厅改回无限滚动,不再用 URL page
+      params.delete('page');
 
       const query = params.toString();
       lastAppliedRef.current = nextQ;
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },
-    [pathname, q, router, searchParams, sort, type],
+    [category, pathname, q, router, searchParams, sort, type],
   );
 
   const onKeywordChange = useCallback(
@@ -138,27 +158,26 @@ export function PostHall(): React.JSX.Element {
   const showPosts = type === 'all' || type === 'posts';
   const showUsers = type === 'all' || type === 'users';
 
-  const postParams = useMemo(() => ({ sort, q: q || undefined }), [sort, q]);
-  const postList = usePostList(postParams, { enabled: showPosts });
+  const postParams = useMemo(
+    () => ({
+      sort,
+      q: q || undefined,
+      category: category === 'all' ? undefined : category,
+    }),
+    [sort, q, category],
+  );
+  const postList = useInfinitePostList(postParams, { enabled: showPosts });
   const userList = useUserSearch({ q, enabled: showUsers && Boolean(q) });
 
   useCommunityListSync();
 
-  const sortItems = useMemo(
+  const categoryItems = useMemo(
     () => [
-      { value: 'latest', label: '最新发布' },
-      { value: 'most_liked', label: '最多点赞' },
-      { value: 'most_commented', label: '最多评论' },
-      { value: 'hot', label: '热门' },
-    ],
-    [],
-  );
-
-  const typeItems = useMemo(
-    () => [
-      { value: 'all', label: '全部' },
-      { value: 'posts', label: '帖子' },
-      { value: 'users', label: '用户' },
+      { value: 'all', label: '全部分类' },
+      ...POST_CATEGORIES.map((value) => ({
+        value,
+        label: POST_CATEGORY_LABELS[value],
+      })),
     ],
     [],
   );
@@ -182,10 +201,13 @@ export function PostHall(): React.JSX.Element {
   const usersNeedQuery = showUsers && !q && type === 'users';
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-5">
-      <header className="flex flex-col gap-3">
+    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3 lg:max-w-none">
+      <header className="flex flex-col gap-2 lg:hidden">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold text-fg sm:text-xl">社区</h1>
+          <div>
+            <h1 className="text-lg font-semibold text-fg">社区</h1>
+            <p className="mt-0.5 text-sm text-fg-muted">讨论运营经验、晒单案例与实用资源</p>
+          </div>
           <Button asChild size="sm" iconLeft={<PenLine size={14} />}>
             <Link href="/community/posts/new">发布</Link>
           </Button>
@@ -213,58 +235,21 @@ export function PostHall(): React.JSX.Element {
         </nav>
       </header>
 
-      <div className="flex flex-col gap-3">
-        <div className="relative w-full">
-          <Search
-            size={16}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-subtle"
-            aria-hidden
-          />
-          <Input
-            value={keyword}
-            onChange={(event) => onKeywordChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                submitSearch();
-              }
-            }}
-            placeholder="搜索帖子或用户"
-            aria-label="搜索帖子或用户"
-            className="pr-9 pl-9"
-            type="search"
-          />
-          {keyword ? (
-            <button
-              type="button"
-              className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-md p-1 text-fg-subtle hover:bg-surface-hover hover:text-fg"
-              aria-label="清空搜索"
-              onClick={clearSearch}
-            >
-              <X size={14} />
-            </button>
-          ) : null}
-        </div>
+      <h1 className="sr-only">社区</h1>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Tabs
-            value={type}
-            onChange={(value) => pushQuery({ type: parseSearchType(value) })}
-            items={typeItems}
-          />
-        </div>
-
-        {type !== 'users' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Tabs
-              value={sort}
-              onChange={(value) => pushQuery({ sort: parseSort(value) })}
-              items={sortItems}
-            />
-            {sort === 'hot' ? <HotSortHint /> : null}
-          </div>
-        ) : null}
-      </div>
+      <CommunityHallToolbar
+        keyword={keyword}
+        type={type}
+        sort={sort}
+        category={category}
+        categoryItems={categoryItems}
+        onKeywordChange={onKeywordChange}
+        onSubmitSearch={submitSearch}
+        onClearSearch={clearSearch}
+        onTypeChange={(value) => pushQuery({ type: value })}
+        onSortChange={(value) => pushQuery({ sort: value })}
+        onCategoryChange={(value) => pushQuery({ category: value })}
+      />
 
       {isLoading ? <PostGridSkeleton /> : null}
 
@@ -287,7 +272,7 @@ export function PostHall(): React.JSX.Element {
           ) : null}
 
           {showUsers && Boolean(q) && !userList.isLoading && !userList.isError ? (
-            <section aria-labelledby="users-heading" className="flex flex-col gap-3">
+            <section aria-labelledby="users-heading" className="flex flex-col gap-2">
               {type === 'all' && userList.items.length > 0 ? (
                 <h2 id="users-heading" className="text-sm font-medium text-fg-muted">
                   用户
@@ -312,7 +297,7 @@ export function PostHall(): React.JSX.Element {
               ) : null}
 
               {userList.items.length > 0 ? (
-                <ul className="flex flex-col gap-3">
+                <ul className="flex flex-col gap-2">
                   {userList.items.map((user) => (
                     <li key={user.id}>
                       <UserResultRow user={user} />
@@ -344,12 +329,20 @@ export function PostHall(): React.JSX.Element {
                   icon={<PenLine size={28} />}
                   title={q ? `没有匹配「${q}」的帖子` : '社区还没有内容'}
                   description={
-                    q ? '换个关键词试试,或者清空搜索看看全部内容。' : '成为第一个分享的人吧。'
+                    q
+                      ? '换个关键词或分类试试,或者清空搜索看看全部内容。'
+                      : '成为第一个分享的人吧。'
                   }
                   action={
-                    q ? (
-                      <Button variant="secondary" onClick={clearSearch}>
-                        清空搜索
+                    q || category !== 'all' ? (
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          clearSearch();
+                          pushQuery({ category: 'all' });
+                        }}
+                      >
+                        清空筛选
                       </Button>
                     ) : (
                       <Button asChild iconLeft={<PenLine size={16} />}>
@@ -361,7 +354,7 @@ export function PostHall(): React.JSX.Element {
               ) : null}
 
               {postList.pinned.length > 0 ? (
-                <section aria-labelledby="pinned-heading" className="flex flex-col gap-3 sm:gap-4">
+                <section aria-labelledby="pinned-heading" className="flex flex-col gap-1.5">
                   <h2
                     id="pinned-heading"
                     className="flex items-center gap-2 text-sm font-medium text-accent"
@@ -369,7 +362,7 @@ export function PostHall(): React.JSX.Element {
                     <Pin size={15} aria-hidden />
                     置顶内容
                   </h2>
-                  <div className="flex flex-col gap-3 sm:gap-4">
+                  <div className="flex flex-col gap-1.5">
                     {postList.pinned.map((post) => (
                       <PostCard key={post.id} post={post} pinned />
                     ))}
@@ -379,7 +372,7 @@ export function PostHall(): React.JSX.Element {
               ) : null}
 
               {postList.normal.length > 0 ? (
-                <section aria-labelledby="posts-heading" className="flex flex-col gap-3 sm:gap-4">
+                <section aria-labelledby="posts-heading" className="flex flex-col gap-1.5">
                   <h2 id="posts-heading" className="sr-only">
                     {type === 'all' && q ? '帖子' : '帖子列表'}
                   </h2>
@@ -394,12 +387,13 @@ export function PostHall(): React.JSX.Element {
                 </section>
               ) : null}
 
-              <LoadMore
-                hasMore={postList.hasMore}
-                loading={postList.isFetchingNextPage}
-                onLoadMore={postList.loadMore}
-                className="pt-1"
-              />
+              {postList.normal.length > 0 || postList.pinned.length > 0 ? (
+                <LoadMore
+                  hasMore={postList.hasMore}
+                  loading={postList.isFetchingNextPage}
+                  onLoadMore={postList.loadMore}
+                />
+              ) : null}
             </>
           ) : null}
         </>
@@ -412,9 +406,9 @@ function UserResultRow({ user }: { user: CommunityUserSummary }): React.JSX.Elem
   const profileHref = `/community/users/${user.id}`;
 
   return (
-    <div className="community-card-enter flex items-start gap-3 rounded-xl border border-border-default bg-bg-elevated p-4 shadow-sm">
+    <div className="community-card-enter flex items-start gap-3 rounded-lg border border-border-default bg-bg-elevated px-3 py-2.5">
       <Link href={profileHref}>
-        <Avatar src={user.avatarUrl} name={user.displayName} size={40} />
+        <Avatar src={user.avatarUrl} name={user.displayName} size={36} />
       </Link>
       <div className="min-w-0 flex-1">
         <Link href={profileHref} className="truncate font-medium text-fg hover:text-accent">

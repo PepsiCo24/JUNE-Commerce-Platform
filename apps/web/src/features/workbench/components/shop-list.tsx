@@ -1,6 +1,6 @@
 'use client';
 
-import { PAGE_SIZE_DEFAULT, type ShopSummary } from '@june/shared';
+import { PAGE_SIZE_DEFAULT, TARGET_PLATFORMS, type ShopSummary } from '@june/shared';
 import { Plus, Search, Store } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -28,8 +28,16 @@ export function ShopListPage(): React.JSX.Element {
   const [submittedQ, setSubmittedQ] = useState('');
   const [type, setType] = useState<'ALL' | 'MAIN' | 'SUB'>('ALL');
   const [status, setStatus] = useState<'ALL' | 'ACTIVE' | 'PAUSED' | 'CLOSED'>('ALL');
+  const [platform, setPlatform] = useState<string>('ALL');
 
-  const list = useShopList({ page, pageSize: PAGE_SIZE_DEFAULT, q: submittedQ, type, status });
+  const list = useShopList({
+    page,
+    pageSize: PAGE_SIZE_DEFAULT,
+    q: submittedQ,
+    type,
+    status,
+    platform: platform === 'ALL' ? undefined : platform,
+  });
   const stats = useShopStats();
 
   const columns = useMemo<Array<Column<ShopSummary>>>(
@@ -63,10 +71,23 @@ export function ShopListPage(): React.JSX.Element {
         render: (row) => row.platform ?? '—',
       },
       {
+        key: 'platformAccount',
+        header: '平台账号',
+        hideOnMobile: true,
+        render: (row) => row.platformAccount ?? '—',
+      },
+      {
         key: 'products',
-        header: '商品',
+        header: '直属商品',
         numeric: true,
         render: (row) => row.productCount,
+      },
+      {
+        key: 'totalProducts',
+        header: '含子店',
+        numeric: true,
+        hideOnMobile: true,
+        render: (row) => (row.childCount > 0 ? row.totalProductCount : '—'),
       },
       {
         key: 'children',
@@ -88,8 +109,8 @@ export function ShopListPage(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="店铺"
-        description="管理主店与子店。子店默认继承平台、联系人与备注。"
+        title="我的店铺"
+        description="以店铺为入口管理商品与凭据。支持搜索、分页与平台筛选。"
         breadcrumbs={[{ label: '工作台', href: '/workbench' }, { label: '店铺' }]}
         actions={
           <div className="flex gap-2">
@@ -115,24 +136,6 @@ export function ShopListPage(): React.JSX.Element {
         </div>
       ) : null}
 
-      {stats.data && stats.data.productCountByShop.length > 0 ? (
-        <Card>
-          <CardContent className="space-y-2 p-4">
-            <p className="text-sm font-medium text-fg">每店商品数</p>
-            <ul className="grid gap-1 sm:grid-cols-2">
-              {stats.data.productCountByShop.map((item) => (
-                <li key={item.shopId} className="flex justify-between text-sm text-fg-muted">
-                  <Link href={`/workbench/shops/${item.shopId}`} className="hover:text-accent">
-                    {item.shopName}
-                  </Link>
-                  <span className="tabular">{item.productCount}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
-
       <form
         className="flex flex-col gap-3 sm:flex-row"
         onSubmit={(event) => {
@@ -153,6 +156,7 @@ export function ShopListPage(): React.JSX.Element {
         </div>
         <Select
           aria-label="店铺类型"
+          className="w-full shrink-0 sm:w-36"
           value={type}
           onChange={(value) => {
             setType(value as 'ALL' | 'MAIN' | 'SUB');
@@ -166,6 +170,7 @@ export function ShopListPage(): React.JSX.Element {
         />
         <Select
           aria-label="店铺状态"
+          className="w-full shrink-0 sm:w-36"
           value={status}
           onChange={(value) => {
             setStatus(value as 'ALL' | 'ACTIVE' | 'PAUSED' | 'CLOSED');
@@ -178,7 +183,22 @@ export function ShopListPage(): React.JSX.Element {
             { value: 'CLOSED', label: '关闭' },
           ]}
         />
-        <Button type="submit">搜索</Button>
+        <Select
+          aria-label="平台"
+          className="w-full shrink-0 sm:w-40"
+          value={platform}
+          onChange={(value) => {
+            setPlatform(value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'ALL', label: '全部平台' },
+            ...TARGET_PLATFORMS.map((p) => ({ value: p.value, label: p.label })),
+          ]}
+        />
+        <Button type="submit" className="shrink-0">
+          搜索
+        </Button>
       </form>
 
       {list.isError ? (

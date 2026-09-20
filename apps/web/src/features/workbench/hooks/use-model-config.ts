@@ -80,13 +80,19 @@ export function limitsOf(model: PublicModelOption | null | undefined): ModelLimi
  */
 export function resolveActiveModel(
   config: PublicModelConfigResponse | undefined,
-  scope: 'image' | 'text',
+  scope: 'image' | 'text' | 'title',
   selectedModelId: string | null,
 ): { model: PublicModelOption | null; locked: boolean; options: PublicModelOption[] } {
   if (!config) return { model: null, locked: false, options: [] };
 
-  const options = scope === 'image' ? config.imageModels : config.textModels;
-  const policy = config.policy[scope];
+  const options =
+    scope === 'image' ? config.imageModels : scope === 'title' ? config.titleModels : config.textModels;
+  const policy =
+    scope === 'title'
+      ? config.policy.title.inheritFromText
+        ? config.policy.text
+        : config.policy.title
+      : config.policy[scope];
 
   if (policy.mode === 'fixed') {
     const fixed =

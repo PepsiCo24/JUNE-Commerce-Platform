@@ -18,6 +18,8 @@ export interface ResolveForSubmitInput {
   capability: RequestCapability;
   /** 用户请求里指定的模型。fixed 策略下会被忽略或直接拒绝。 */
   requestedModelConfigId?: string | undefined;
+  /** 标题生成可独立策略,默认可继承文案(text)策略 */
+  policyScope?: 'image' | 'text' | 'title';
 }
 
 export interface ResolvedModel {
@@ -51,7 +53,14 @@ export class ModelResolverService {
 
   async resolveForSubmit(input: ResolveForSubmitInput): Promise<ResolvedModel> {
     const policy = await this.models.getPolicy();
-    const scoped = input.capability === 'TEXT' ? policy.text : policy.image;
+    const scoped =
+      input.policyScope === 'title'
+        ? policy.title.inheritFromText
+          ? policy.text
+          : policy.title
+        : input.capability === 'TEXT'
+          ? policy.text
+          : policy.image;
 
     const { modelConfigId, locked } = await this.pickModelId(input, scoped);
     const { modelConfig, provider } = await this.loadAndValidate(modelConfigId, input.capability, locked);

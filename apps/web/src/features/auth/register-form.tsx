@@ -41,6 +41,7 @@ export function RegisterForm(): React.JSX.Element {
       }
     >
       <form
+        noValidate
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();

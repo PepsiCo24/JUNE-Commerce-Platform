@@ -1,6 +1,6 @@
 'use client';
 
-import { CSRF_COOKIE, CSRF_HEADER } from '@june/shared';
+import { CSRF_COOKIE_ADMIN, CSRF_HEADER } from '@june/shared';
 
 import { api, type RequestOptions } from '@/lib/api/client';
 
@@ -13,25 +13,25 @@ import { api, type RequestOptions } from '@/lib/api/client';
  *  身份、没有站点会话的账号在 `/auth/me` 上会拿到 `csrfToken: null`,从而把模块级
  *  令牌清空,导致管理站的写请求被 CsrfGuard 拒绝。
  *
- *  后端的 CSRF 是双提交 Cookie:请求头必须与 `june_csrf` Cookie 相等,而该 Cookie
- *  刻意不是 HttpOnly(见 session.service.ts 的注释),因此这里每次写请求都直接从
- *  Cookie 读取并显式回填请求头,不依赖任何共享的内存状态。
+ *  后端 CSRF 是双提交 Cookie:请求头必须与 `june_admin_csrf` Cookie 相等。
+ *  该 Cookie 与站点 `june_csrf` 隔离,避免两边会话互相覆盖。
+ *  这里每次写请求都从 Cookie 读取并显式回填请求头,不依赖共享内存状态。
  *
  * 安全约束:这里不做任何凭据缓存。供应商 API Key / 微信 appSecret 等明文只会以
  * 请求体形式出现一次,既不写入 query cache,也不写入 localStorage。
  */
 
-function readCsrfCookie(): string | null {
+function readAdminCsrfCookie(): string | null {
   if (typeof document === 'undefined') return null;
   for (const part of document.cookie.split(';')) {
     const [name, ...rest] = part.trim().split('=');
-    if (name === CSRF_COOKIE) return decodeURIComponent(rest.join('='));
+    if (name === CSRF_COOKIE_ADMIN) return decodeURIComponent(rest.join('='));
   }
   return null;
 }
 
 function withCsrf(options?: Omit<RequestOptions, 'method' | 'body'>): Omit<RequestOptions, 'method' | 'body'> {
-  const token = readCsrfCookie();
+  const token = readAdminCsrfCookie();
   if (!token) return options ?? {};
   return { ...options, headers: { [CSRF_HEADER]: token, ...options?.headers } };
 }

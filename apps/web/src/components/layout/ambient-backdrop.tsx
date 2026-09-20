@@ -21,8 +21,8 @@ interface Glow {
   key: string;
   /** 定位与尺寸。尺寸用 vw/rem 混合,移动端自动收小,不会溢出视口 */
   className: string;
-  /** 只取设计系统里的光晕语义变量,不写具体色值 */
-  color: 'var(--glow-teal)' | 'var(--glow-purple)';
+  /** 设计系统光晕变量,或社区页用的加强色 */
+  color: string;
   /** 错开相位,避免两团光同时到达最亮 */
   delaySeconds: number;
 }
@@ -65,25 +65,56 @@ const HOME_GLOWS: Glow[] = [
   },
 ];
 
+/** 社区信息流:两侧加大、加浓光晕,填充宽屏留白 */
+const COMMUNITY_GLOWS: Glow[] = [
+  {
+    key: 'teal-left',
+    className: 'top-[2%] left-[-20%] h-[min(40rem,82vw)] w-[min(40rem,82vw)]',
+    color: 'rgba(86, 222, 205, 0.28)',
+    delaySeconds: 0,
+  },
+  {
+    key: 'purple-right',
+    className: 'top-[24%] right-[-18%] h-[min(36rem,76vw)] w-[min(36rem,76vw)]',
+    color: 'rgba(155, 138, 251, 0.24)',
+    delaySeconds: -8,
+  },
+  {
+    key: 'teal-bottom',
+    className: 'bottom-[-20%] left-[12%] h-[min(30rem,66vw)] w-[min(30rem,66vw)]',
+    color: 'rgba(86, 222, 205, 0.18)',
+    delaySeconds: -14,
+  },
+];
+
 export function AmbientBackdrop({
   variant = 'home',
   texture = true,
   className,
 }: {
-  variant?: 'auth' | 'home';
+  variant?: 'auth' | 'home' | 'community';
   texture?: boolean;
   className?: string;
 }): React.JSX.Element {
   const reducedMotion = useReducedMotion();
-  const glows = variant === 'auth' ? AUTH_GLOWS : HOME_GLOWS;
+  const glows =
+    variant === 'auth' ? AUTH_GLOWS : variant === 'community' ? COMMUNITY_GLOWS : HOME_GLOWS;
 
   return (
     <div
       aria-hidden="true"
       // overflow-hidden 保证光晕不会撑出横向滚动条(390px 下尤其重要)
       className={cn('pointer-events-none absolute inset-0 -z-10 overflow-hidden', className)}
+      data-ambient={variant}
     >
-      {texture ? <div className="june-texture absolute inset-0 opacity-80" /> : null}
+      {texture ? (
+        <div
+          className={cn(
+            'june-texture absolute inset-0',
+            variant === 'community' ? 'opacity-100' : 'opacity-80',
+          )}
+        />
+      ) : null}
 
       {glows.map((glow) => (
         <div
@@ -91,6 +122,7 @@ export function AmbientBackdrop({
           className={cn('june-glow', glow.className)}
           style={{
             background: glow.color,
+            opacity: variant === 'community' ? 1 : undefined,
             animation: reducedMotion
               ? undefined
               : `june-breathe ${MOTION.durationAmbient}s var(--ease-in-out-june) ${glow.delaySeconds}s infinite`,

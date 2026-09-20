@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 import {
+  ALIPAY_ACCOUNT_NAME_MAX,
+  ALIPAY_PHONE_MAX,
   INHERITABLE_SHOP_FIELD_VALUES,
+  PLATFORM_ACCOUNT_MAX,
   PRODUCT_IMPORT_MAX_ROWS,
   PRODUCT_NAME_MAX,
   PRODUCT_SKU_MAX,
@@ -13,9 +16,23 @@ import { cursorQuerySchema, idSchema, pageQuerySchema } from './common';
 // 店铺
 // ---------------------------------------------------------------------------
 
+/** 平台账号用户名:按字符串保存,允许冒号/中文等实际账号字符 */
+const platformAccountSchema = z
+  .string()
+  .trim()
+  .min(1, '请填写平台账号用户名')
+  .max(PLATFORM_ACCOUNT_MAX)
+  .nullable()
+  .optional();
+
+/** 店铺登录密码:创建可选;更新时不传表示保留,传空串非法 */
+const shopLoginPasswordSchema = z.string().min(1, '密码不能为空').max(500).optional();
+
 export const shopBaseFieldsSchema = z.object({
   name: z.string().trim().min(1, '店铺名称不能为空').max(SHOP_NAME_MAX),
   platform: z.string().trim().max(60).nullable().optional(),
+  /** 与店铺名称独立的平台登录用户名 */
+  platformAccount: platformAccountSchema,
   url: z.url('店铺链接格式不正确').max(500).nullable().optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   contactName: z.string().trim().max(80).nullable().optional(),
@@ -27,6 +44,8 @@ export const shopBaseFieldsSchema = z.object({
 export const shopCreateSchema = shopBaseFieldsSchema.extend({
   /** 传 parentId 即创建子店铺;父店必须是同一用户的主店铺 */
   parentId: idSchema.nullable().optional(),
+  /** 主要登录密码(写入 ShopCredential,不落 shops 表) */
+  loginPassword: shopLoginPasswordSchema,
 });
 export type ShopCreateInput = z.infer<typeof shopCreateSchema>;
 
@@ -37,6 +56,13 @@ export const shopUpdateSchema = shopBaseFieldsSchema.partial().extend({
    * 已被子店覆盖的字段永不被同步覆盖。
    */
   propagateToChildren: z.boolean().default(true),
+  /** 不传表示保留原密码;传新值则轮换主要登录密码 */
+  loginPassword: shopLoginPasswordSchema,
+  /** 明确清除主要登录密码(与 loginPassword 互斥) */
+  clearLoginPassword: z.boolean().optional(),
+}).refine((v) => !(v.loginPassword && v.clearLoginPassword), {
+  message: '不能同时设置新密码与清除密码',
+  path: ['loginPassword'],
 });
 export type ShopUpdateInput = z.infer<typeof shopUpdateSchema>;
 
@@ -49,6 +75,8 @@ export const shopListQuerySchema = pageQuerySchema.extend({
   q: z.string().trim().max(120).optional(),
   type: z.enum(['ALL', 'MAIN', 'SUB']).default('ALL'),
   status: z.enum(['ALL', 'ACTIVE', 'PAUSED', 'CLOSED']).default('ALL'),
+  /** 平台筛选(精确匹配,忽略大小写) */
+  platform: z.string().trim().max(80).optional(),
   parentId: idSchema.optional(),
 });
 
@@ -95,12 +123,21 @@ export interface ShopSummary {
   type: 'MAIN' | 'SUB';
   status: 'ACTIVE' | 'PAUSED' | 'CLOSED';
   platform: string | null;
+  /** 平台账号用户名(非密码) */
+  platformAccount: string | null;
   url: string | null;
   parentId: string | null;
   parentName: string | null;
+  /** 直属商品数(不含子店,排除已删除) */
   productCount: number;
+  /** 含全部子店的商品合计;无子店时与 productCount 相同 */
+  totalProductCount: number;
   childCount: number;
   credentialCount: number;
+  /** 是否已设置主要登录密码(不泄漏密文) */
+  hasPrimaryPassword: boolean;
+  /** 主要登录凭据 id,便于前端发起 reveal;未设置时为 null */
+  primaryCredentialId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,6 +168,7 @@ export interface ShopGraph {
     status: 'ACTIVE' | 'PAUSED' | 'CLOSED';
     productCount: number;
     platform: string | null;
+    platformAccount: string | null;
   }>;
   edges: Array<{ id: string; source: string; target: string }>;
 }
@@ -166,6 +204,7 @@ export interface CredentialSummary {
   account: string;
   loginUrl: string | null;
   note: string | null;
+  isPrimary: boolean;
   /** 固定掩码,不反映真实长度 */
   passwordMask: string;
   passwordUpdatedAt: string;
@@ -290,3 +329,64 @@ export interface ImportJobStatus {
 }
 
 export { PRODUCT_IMPORT_MAX_ROWS };
+
+// ---------------------------------------------------------------------------
+// 支付宝账户(登录信息管理)
+// ---------------------------------------------------------------------------
+
+export const alipayAccountCreateSchema = z.object({
+  name: z.string().trim().min(1, '请填写账户名称').max(ALIPAY_ACCOUNT_NAME_MAX),
+  phone: z.string().trim().min(5, '请填写绑定手机号').max(ALIPAY_PHONE_MAX),
+  password: z.string().min(1, '请填写登录密码').max(500),
+  note: z.string().trim().max(1000).nullable().optional(),
+  shopId: idSchema.nullable().optional(),
+});
+export type AlipayAccountCreateInput = z.infer<typeof alipayAccountCreateSchema>;
+
+export const alipayAccountUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(ALIPAY_ACCOUNT_NAME_MAX).optional(),
+    phone: z.string().trim().min(5).max(ALIPAY_PHONE_MAX).optional(),
+    /** 不传表示保留原密码 */
+    password: z.string().min(1).max(500).optional(),
+    /** 明确清除密码 */
+    clearPassword: z.boolean().optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+    shopId: idSchema.nullable().optional(),
+  })
+  .refine((v) => !(v.password && v.clearPassword), {
+    message: '不能同时设置新密码与清除密码',
+    path: ['password'],
+  });
+export type AlipayAccountUpdateInput = z.infer<typeof alipayAccountUpdateSchema>;
+
+export const alipayAccountListQuerySchema = pageQuerySchema.extend({
+  q: z.string().trim().max(120).optional(),
+  shopId: idSchema.optional(),
+});
+
+/** 列表/普通详情:手机号脱敏,密码仅状态 */
+export interface AlipayAccountSummary {
+  id: string;
+  name: string;
+  phoneMasked: string;
+  hasPassword: boolean;
+  note: string | null;
+  shopId: string | null;
+  shopName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlipayAccountDetail extends AlipayAccountSummary {}
+
+export interface AlipayPhoneRevealResponse {
+  id: string;
+  phone: string;
+}
+
+export interface AlipayPasswordRevealResponse {
+  id: string;
+  password: string;
+  expiresInSeconds: number;
+}

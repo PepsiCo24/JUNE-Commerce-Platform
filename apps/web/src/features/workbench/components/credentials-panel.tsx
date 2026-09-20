@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/feedback/confirm-dialog';
 import { EmptyState, ErrorState } from '@/components/feedback/states';
 import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
@@ -152,7 +153,20 @@ function CredentialsPanel({ shopId, shops }: { shopId: string; shops: ShopSummar
 
   const columns = useMemo<Array<Column<CredentialSummary>>>(
     () => [
-      { key: 'purpose', header: '用途', render: (row) => row.purpose },
+      {
+        key: 'purpose',
+        header: '用途',
+        render: (row) => (
+          <div className="flex items-center gap-2">
+            <span>{row.purpose}</span>
+            {row.isPrimary ? (
+              <Badge tone="accent" size="sm">
+                主要
+              </Badge>
+            ) : null}
+          </div>
+        ),
+      },
       { key: 'account', header: '账号', render: (row) => row.account },
       {
         key: 'password',

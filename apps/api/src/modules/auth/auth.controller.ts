@@ -3,7 +3,6 @@ import { Throttle } from '@nestjs/throttler';
 import { SessionScope } from '@june/db';
 import {
   changePasswordSchema,
-  CSRF_COOKIE,
   loginSchema,
   reauthSchema,
   registerSchema,
@@ -28,6 +27,7 @@ import {
 import { zodBody } from '../../common/validation/zod-body.pipe';
 import { loadEnv } from '../../config/env';
 import { AuthService } from './auth.service';
+import { SessionService } from './session.service';
 
 const authThrottle = {
   default: { limit: loadEnv().RATE_LIMIT_AUTH_PER_MINUTE, ttl: 60_000 },
@@ -39,16 +39,27 @@ const authThrottle = {
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly sessions: SessionService,
+  ) {}
 
   /** 当前登录状态。前端启动时调用一次,同时拿到 CSRF 令牌。 */
   @Public()
   @Get('me')
-  async me(@Req() req: AuthenticatedRequest): Promise<AuthStateResponse> {
+  async me(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthStateResponse> {
     const user = req.authUser;
-    if (!user) return { user: null, csrfToken: null };
+    const sessionToken = req.authSession?.token;
+    if (!user || !sessionToken) return { user: null, csrfToken: null };
 
-    const csrfToken = (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE] ?? null;
+    const csrfToken = this.sessions.refreshCsrfCookie({
+      scope: SessionScope.SITE,
+      sessionToken,
+      response: res,
+    });
     return { user: await this.auth.buildSessionUser(user.id), csrfToken };
   }
 

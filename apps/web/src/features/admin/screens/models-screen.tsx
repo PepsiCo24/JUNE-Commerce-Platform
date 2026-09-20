@@ -24,7 +24,7 @@ import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
-import { RadioGroup, Switch } from '@/components/ui/toggle';
+import { Checkbox, RadioGroup, Switch } from '@/components/ui/toggle';
 import { Select } from '@/components/ui/select';
 import { DataTable, type Column } from '@/components/ui/table';
 import { Tabs } from '@/components/ui/tabs';
@@ -578,6 +578,7 @@ function PolicyPanel({ version }: { version: number }): React.JSX.Element {
 
   const imageModels = (modelsQuery.data ?? []).filter((item) => item.capabilities.includes('TEXT_TO_IMAGE'));
   const textModels = (modelsQuery.data ?? []).filter((item) => item.capabilities.includes('TEXT'));
+  const titlePolicy = policy.title ?? { mode: 'user_selectable' as const, fixedModelId: null, inheritFromText: true };
 
   return (
     <div className="space-y-6">
@@ -585,15 +586,46 @@ function PolicyPanel({ version }: { version: number }): React.JSX.Element {
         title="生图"
         value={policy.image}
         models={imageModels}
-        onChange={(image) => setDraft({ ...policy, image })}
+        onChange={(image) => setDraft({ ...policy, image, title: titlePolicy })}
       />
       <PolicyBlock
         title="文案"
         value={policy.text}
         models={textModels}
-        onChange={(text) => setDraft({ ...policy, text })}
+        onChange={(text) => setDraft({ ...policy, text, title: titlePolicy })}
       />
-      <Button loading={save.isPending} onClick={() => save.mutate(policy)}>
+      <section className="space-y-3 rounded-lg border border-border-default bg-surface p-4">
+        <h2 className="font-semibold">标题生成</h2>
+        <Checkbox
+          id="title-inherit-text"
+          checked={titlePolicy.inheritFromText}
+          onChange={(checked) =>
+            setDraft({
+              ...policy,
+              title: { ...titlePolicy, inheritFromText: checked },
+            })
+          }
+          label="沿用文案模型策略(关闭后可单独固定标题模型)"
+        />
+        {!titlePolicy.inheritFromText ? (
+          <PolicyBlock
+            title="标题独立策略"
+            value={titlePolicy}
+            models={textModels}
+            onChange={(title) => setDraft({ ...policy, title: { ...title, inheritFromText: false } })}
+          />
+        ) : null}
+      </section>
+      <Button
+        loading={save.isPending}
+        onClick={() =>
+          save.mutate({
+            image: policy.image,
+            text: policy.text,
+            title: titlePolicy,
+          })
+        }
+      >
         保存策略
       </Button>
     </div>

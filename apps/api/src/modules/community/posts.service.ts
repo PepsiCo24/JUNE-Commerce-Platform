@@ -5,7 +5,7 @@ import {
   computeHotScore,
   ERROR_CODES,
   htmlToExcerpt,
-  type CursorResult,
+  type PageResult,
   type PostDetail,
   type PostListItem,
   type PostListQuery,
@@ -23,11 +23,8 @@ import { AssetUrlService } from '../assets/asset-url.service';
 import { AuthorSummaryService } from './author-summary.service';
 import {
   buildPostPublicUrl,
-  encodeHotCursor,
-  encodeTimeCursor,
-  parseCursor,
-  type HotCursor,
-  type TimeCursor,
+  fromPrismaCategory,
+  toPrismaCategory,
 } from './community.util';
 import {
   findForeignImageSrcs,
@@ -37,8 +34,8 @@ import {
 
 /** 我的帖子列表查询(schema 在 @june/shared,这里只声明形状) */
 export interface MyPostListQuery {
-  cursor?: string;
-  limit: number;
+  page: number;
+  pageSize: number;
   status: 'ALL' | 'DRAFT' | 'PUBLISHED' | 'HIDDEN';
   q?: string;
 }
@@ -57,6 +54,7 @@ const POST_LIST_SELECT = {
   slug: true,
   title: true,
   excerpt: true,
+  category: true,
   authorId: true,
   status: true,
   publishedAt: true,
@@ -118,85 +116,98 @@ export class PostsService {
   /**
    * 帖子大厅。
    *
-   * 排序:置顶优先(仅无搜索词时);组内按 latest / most_liked / most_commented / hot。
+   * 排序:置顶优先(仅首页且无搜索词时);组内按 latest / most_liked / most_commented / hot。
    * 搜索结果必须先满足查询条件,不插入无关置顶帖。
+   * 分页为页码制,状态由前端写进 URL(?page=)。
    */
-  async list(query: PostListQuery, viewer: AuthUser | null): Promise<CursorResult<PostListItem>> {
+  async list(query: PostListQuery, viewer: AuthUser | null): Promise<PageResult<PostListItem>> {
     if (query.mine && !viewer) throw AppException.unauthenticated();
 
     const searching = Boolean(query.q?.trim());
+    const categoryFilter =
+      query.category && query.category !== 'all'
+        ? { category: toPrismaCategory(query.category) }
+        : {};
     const base: Prisma.PostWhereInput = {
       status: PostStatus.PUBLISHED,
       deletedAt: null,
       ...(query.mine && viewer ? { authorId: viewer.id } : {}),
       ...(query.authorId ? { authorId: query.authorId } : {}),
+      ...categoryFilter,
       ...this.buildSearchWhere(query.q),
     };
 
     const sortOrderBy = this.buildSortOrderBy(query.sort);
+    const page = query.page;
+    const pageSize = query.pageSize;
 
-    const pinned =
-      searching || query.cursor || query.authorId
-        ? []
-        : await this.prisma.db.post.findMany({
-            where: { AND: [base, { isPinned: true }] },
-            orderBy: [{ pinnedOrder: 'asc' }, ...sortOrderBy],
-            take: PINNED_LIMIT,
-            select: POST_LIST_SELECT,
-          });
+    // 置顶只在大厅首页、非搜索场景展示;搜索与个人主页不插无关置顶
+    const showPinned = page === 1 && !searching && !query.authorId && !query.mine;
+    const pinned = showPinned
+      ? await this.prisma.db.post.findMany({
+          where: { AND: [base, { isPinned: true }] },
+          orderBy: [{ pinnedOrder: 'asc' }, ...sortOrderBy],
+          take: PINNED_LIMIT,
+          select: POST_LIST_SELECT,
+        })
+      : [];
 
-    const rows = await this.prisma.db.post.findMany({
-      where: {
-        AND: [base, searching ? {} : { isPinned: false }, this.buildListKeyset(query)],
-      },
-      orderBy: sortOrderBy,
-      take: query.limit + 1,
-      select: POST_LIST_SELECT,
-    });
+    const normalWhere: Prisma.PostWhereInput = {
+      AND: [base, searching ? {} : { isPinned: false }],
+    };
 
-    const hasMore = rows.length > query.limit;
-    const page = hasMore ? rows.slice(0, query.limit) : rows;
-    const last = page[page.length - 1];
+    const [total, rows] = await Promise.all([
+      this.prisma.db.post.count({ where: normalWhere }),
+      this.prisma.db.post.findMany({
+        where: normalWhere,
+        orderBy: sortOrderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: POST_LIST_SELECT,
+      }),
+    ]);
 
     return {
-      items: await this.toListItems([...pinned, ...page], viewer),
-      nextCursor: hasMore && last ? this.encodeListCursor(query.sort, last) : null,
-      hasMore,
+      items: await this.toListItems([...pinned, ...rows], viewer),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / Math.max(1, pageSize))),
     };
   }
 
   /** 我的帖子(含草稿与被隐藏的帖子,不含已删除) */
-  async listMine(user: AuthUser, query: MyPostListQuery): Promise<CursorResult<PostListItem>> {
+  async listMine(user: AuthUser, query: MyPostListQuery): Promise<PageResult<PostListItem>> {
     const where: Prisma.PostWhereInput = {
-      AND: [
-        {
-          authorId: user.id,
-          deletedAt: null,
-          status:
-            query.status === 'ALL'
-              ? { in: [PostStatus.DRAFT, PostStatus.PUBLISHED, PostStatus.HIDDEN] }
-              : PostStatus[query.status],
-          ...this.buildSearchWhere(query.q),
-        },
-        this.buildUpdatedAtKeyset(query.cursor),
-      ],
+      authorId: user.id,
+      deletedAt: null,
+      status:
+        query.status === 'ALL'
+          ? { in: [PostStatus.DRAFT, PostStatus.PUBLISHED, PostStatus.HIDDEN] }
+          : PostStatus[query.status],
+      ...this.buildSearchWhere(query.q),
     };
 
-    const rows = await this.prisma.db.post.findMany({
-      where,
-      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      take: query.limit + 1,
-      select: POST_LIST_SELECT,
-    });
+    const page = query.page;
+    const pageSize = query.pageSize;
 
-    const hasMore = rows.length > query.limit;
-    const page = hasMore ? rows.slice(0, query.limit) : rows;
-    const last = page[page.length - 1];
+    const [total, rows] = await Promise.all([
+      this.prisma.db.post.count({ where }),
+      this.prisma.db.post.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: POST_LIST_SELECT,
+      }),
+    ]);
 
     return {
-      items: await this.toListItems(page, user),
-      nextCursor: hasMore && last ? encodeTimeCursor(last.updatedAt, last.id) : null,
-      hasMore,
+      items: await this.toListItems(rows, user),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / Math.max(1, pageSize))),
     };
   }
 
@@ -263,6 +274,7 @@ export class PostsService {
           coverAssetId: prepared.coverAssetId,
           imageAssetIds: prepared.imageAssetIds,
           publishedAt,
+          category: toPrismaCategory(input.category),
           hotScore: computeHotScore({
             likeCount: 0,
             commentCount: 0,
@@ -313,6 +325,7 @@ export class PostsService {
           coverAssetId: prepared.coverAssetId,
           imageAssetIds: prepared.imageAssetIds,
           publishedAt,
+          category: toPrismaCategory(input.category),
           hotScore: computeHotScore({
             likeCount: 0,
             commentCount: 0,
@@ -368,6 +381,7 @@ export class PostsService {
           excerpt: prepared.excerpt,
           coverAssetId: prepared.coverAssetId,
           imageAssetIds: prepared.imageAssetIds,
+          category: toPrismaCategory(input.category),
           contentEditedAt: new Date(),
         },
       });
@@ -494,6 +508,7 @@ export class PostsService {
         slug: row.slug,
         title: row.title,
         excerpt: row.excerpt,
+        category: fromPrismaCategory(row.category),
         coverUrl: row.coverAsset ? await this.urls.thumbUrl(row.coverAsset) : null,
         coverWidth: row.coverAsset?.width ?? null,
         coverHeight: row.coverAsset?.height ?? null,
@@ -593,6 +608,7 @@ export class PostsService {
         { title: { contains: keyword, mode: 'insensitive' } },
         { excerpt: { contains: keyword, mode: 'insensitive' } },
         { contentHtml: { contains: keyword, mode: 'insensitive' } },
+        { author: { displayName: { contains: keyword, mode: 'insensitive' } } },
       ],
     };
   }
@@ -609,47 +625,6 @@ export class PostsService {
       default:
         return [{ publishedAt: 'desc' }, { id: 'desc' }];
     }
-  }
-
-  private encodeListCursor(sort: PostListQuery['sort'], last: PostListRow): string {
-    const at = last.publishedAt ?? last.updatedAt;
-    if (sort === 'hot') return encodeHotCursor(last.hotScore, at, last.id);
-    if (sort === 'most_liked') return encodeHotCursor(last.likeCount, at, last.id);
-    if (sort === 'most_commented') return encodeHotCursor(last.commentCount, at, last.id);
-    return encodeTimeCursor(at, last.id);
-  }
-
-  /** 我的帖子的键集游标:按 (updatedAt, id) 递减翻页 */
-  private buildUpdatedAtKeyset(cursor?: string): Prisma.PostWhereInput {
-    if (!cursor) return {};
-    const payload = parseCursor<TimeCursor>(cursor, ['t', 'id']);
-    const at = new Date(payload.t);
-    return { OR: [{ updatedAt: { lt: at } }, { updatedAt: at, id: { lt: payload.id } }] };
-  }
-
-  /** 键集游标:latest 用时间;hot/most_* 用分数+时间+id */
-  private buildListKeyset(query: PostListQuery): Prisma.PostWhereInput {
-    if (!query.cursor) return {};
-
-    if (query.sort === 'hot' || query.sort === 'most_liked' || query.sort === 'most_commented') {
-      const cursor = parseCursor<HotCursor>(query.cursor, ['s', 't', 'id']);
-      const at = new Date(cursor.t);
-      const scoreField =
-        query.sort === 'hot' ? 'hotScore' : query.sort === 'most_liked' ? 'likeCount' : 'commentCount';
-      return {
-        OR: [
-          { [scoreField]: { lt: cursor.s } },
-          { AND: [{ [scoreField]: cursor.s }, { publishedAt: { lt: at } }] },
-          { AND: [{ [scoreField]: cursor.s }, { publishedAt: at }, { id: { lt: cursor.id } }] },
-        ],
-      };
-    }
-
-    const cursor = parseCursor<TimeCursor>(query.cursor, ['t', 'id']);
-    const at = new Date(cursor.t);
-    return {
-      OR: [{ publishedAt: { lt: at } }, { AND: [{ publishedAt: at }, { id: { lt: cursor.id } }] }],
-    };
   }
 
   /**

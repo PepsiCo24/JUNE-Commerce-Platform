@@ -4,9 +4,10 @@ import {
   PAGE_SIZE_DEFAULT,
   type CommunityUserSummary,
   type CursorResult,
+  type PageResult,
   type PostListItem,
 } from '@june/shared';
-import { useInfiniteQuery, type UseInfiniteQueryResult } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import {
@@ -19,26 +20,10 @@ import {
   type PostListParams,
 } from '../api';
 
-/**
- * 后端是键集游标分页(不是页码),所以列表统一用 useInfiniteQuery + "加载更多",
- * 而不是伪造一个总数去渲染页码。每页默认 20 条(PAGE_SIZE_DEFAULT)。
- */
-export interface PostListResult {
-  /** 置顶帖。后端在首屏一次性带出并按 pinnedOrder 排好序,前端只负责分组展示 */
-  pinned: PostListItem[];
-  /** 普通帖子流 */
-  normal: PostListItem[];
-  total: number;
-  query: UseInfiniteQueryResult<{ pages: Array<CursorResult<PostListItem>> }, Error>;
-}
-
-type InfinitePosts = { pages: Array<CursorResult<PostListItem>>; pageParams: Array<string | undefined> };
-
-function splitPinned(pages: Array<CursorResult<PostListItem>> | undefined): {
+function splitPinned(items: PostListItem[]): {
   pinned: PostListItem[];
   normal: PostListItem[];
 } {
-  const items = (pages ?? []).flatMap((page) => page.items);
   const pinned: PostListItem[] = [];
   const normal: PostListItem[] = [];
   for (const item of items) {
@@ -48,12 +33,64 @@ function splitPinned(pages: Array<CursorResult<PostListItem>> | undefined): {
   return { pinned, normal };
 }
 
+/** 帖子大厅:页码分页,page 由调用方从 URL 传入(侧栏热帖等单页场景) */
 export function usePostList(
+  params: PostListParams & { page?: number; pageSize?: number },
+  options: { enabled?: boolean } = {},
+): {
+  pinned: PostListItem[];
+  normal: PostListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => void;
+} {
+  const enabled = options.enabled ?? true;
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? PAGE_SIZE_DEFAULT;
+  const query = useQuery({
+    queryKey: communityKeys.posts({ ...params, page }),
+    queryFn: ({ signal }) => fetchPosts({ ...params, page, pageSize }, signal),
+    enabled,
+  });
+
+  const data = query.data as PageResult<PostListItem> | undefined;
+  const { pinned, normal } = useMemo(() => splitPinned(data?.items ?? []), [data?.items]);
+
+  return {
+    pinned,
+    normal,
+    total: data?.total ?? 0,
+    page: data?.page ?? page,
+    pageSize: data?.pageSize ?? pageSize,
+    totalPages: data?.totalPages ?? 1,
+    isLoading: enabled ? query.isPending : false,
+    isError: query.isError,
+    error: query.error,
+    refetch: () => void query.refetch(),
+  };
+}
+
+type InfinitePosts = {
+  pages: Array<PageResult<PostListItem>>;
+  pageParams: number[];
+};
+
+/**
+ * 帖子大厅无限滚动:后端仍是 page/pageSize,前端累加翻页(知乎式懒加载)。
+ * 大厅固定每页 10 条;置顶只出现在第 1 页。
+ */
+export function useInfinitePostList(
   params: PostListParams,
   options: { enabled?: boolean } = {},
 ): {
   pinned: PostListItem[];
   normal: PostListItem[];
+  total: number;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -63,23 +100,39 @@ export function usePostList(
   loadMore: () => void;
 } {
   const enabled = options.enabled ?? true;
+  const pageSize = 10;
   const query = useInfiniteQuery({
-    queryKey: communityKeys.posts(params),
+    queryKey: communityKeys.postsFeed({ ...params, pageSize }),
     queryFn: ({ pageParam, signal }) =>
-      fetchPosts({ ...params, cursor: pageParam, limit: PAGE_SIZE_DEFAULT }, signal),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      fetchPosts({ ...params, page: pageParam, pageSize }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     enabled,
   });
 
-  const { pinned, normal } = useMemo(
-    () => splitPinned((query.data as InfinitePosts | undefined)?.pages),
-    [query.data],
-  );
+  const pages = (query.data as InfinitePosts | undefined)?.pages ?? [];
+
+  const { pinned, normal } = useMemo(() => {
+    const seen = new Set<string>();
+    const pinnedItems: PostListItem[] = [];
+    const normalItems: PostListItem[] = [];
+
+    for (const page of pages) {
+      for (const item of page.items) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        if (item.isPinned) pinnedItems.push(item);
+        else normalItems.push(item);
+      }
+    }
+    return { pinned: pinnedItems, normal: normalItems };
+  }, [pages]);
 
   return {
     pinned,
     normal,
+    total: pages[0]?.total ?? 0,
     isLoading: enabled ? query.isPending : false,
     isError: query.isError,
     error: query.error,
@@ -91,74 +144,77 @@ export function usePostList(
 }
 
 /** 我的内容。草稿只有作者能拿到(后端每个查询都带 authorId),前端不做任何越权尝试。 */
-export function useMyPostList(params: { status: MyPostStatus; q?: string }): {
+export function useMyPostList(params: {
+  status: MyPostStatus;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+}): {
   items: PostListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
   refetch: () => void;
-  hasMore: boolean;
-  isFetchingNextPage: boolean;
-  loadMore: () => void;
 } {
-  const query = useInfiniteQuery({
-    queryKey: communityKeys.myPosts(params),
-    queryFn: ({ pageParam, signal }) =>
-      fetchMyPosts({ ...params, cursor: pageParam, limit: PAGE_SIZE_DEFAULT }, signal),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? PAGE_SIZE_DEFAULT;
+  const query = useQuery({
+    queryKey: communityKeys.myPosts({ status: params.status, q: params.q, page }),
+    queryFn: ({ signal }) =>
+      fetchMyPosts({ status: params.status, q: params.q, page, pageSize }, signal),
   });
 
-  const items = useMemo(
-    () => ((query.data as InfinitePosts | undefined)?.pages ?? []).flatMap((page) => page.items),
-    [query.data],
-  );
+  const data = query.data as PageResult<PostListItem> | undefined;
 
   return {
-    items,
+    items: data?.items ?? [],
+    total: data?.total ?? 0,
+    page: data?.page ?? page,
+    pageSize: data?.pageSize ?? pageSize,
+    totalPages: data?.totalPages ?? 1,
     isLoading: query.isPending,
     isError: query.isError,
     error: query.error,
     refetch: () => void query.refetch(),
-    hasMore: Boolean(query.hasNextPage),
-    isFetchingNextPage: query.isFetchingNextPage,
-    loadMore: () => void query.fetchNextPage(),
   };
 }
 
-/** 我的收藏。不可访问的帖子会带 unavailable=true,仍可取消收藏。 */
-export function useBookmarkList(params: { q?: string } = {}): {
+export function useBookmarkList(
+  params: { q?: string; page?: number; pageSize?: number } = {},
+): {
   items: PostListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
   refetch: () => void;
-  hasMore: boolean;
-  isFetchingNextPage: boolean;
-  loadMore: () => void;
 } {
-  const query = useInfiniteQuery({
-    queryKey: communityKeys.bookmarks(params),
-    queryFn: ({ pageParam, signal }) =>
-      fetchBookmarks({ ...params, cursor: pageParam, limit: PAGE_SIZE_DEFAULT }, signal),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  const page = params.page ?? 1;
+  const pageSize = params.pageSize ?? PAGE_SIZE_DEFAULT;
+  const query = useQuery({
+    queryKey: communityKeys.bookmarks({ q: params.q, page }),
+    queryFn: ({ signal }) => fetchBookmarks({ q: params.q, page, pageSize }, signal),
   });
 
-  const items = useMemo(
-    () => ((query.data as InfinitePosts | undefined)?.pages ?? []).flatMap((page) => page.items),
-    [query.data],
-  );
+  const data = query.data as PageResult<PostListItem> | undefined;
 
   return {
-    items,
+    items: data?.items ?? [],
+    total: data?.total ?? 0,
+    page: data?.page ?? page,
+    pageSize: data?.pageSize ?? pageSize,
+    totalPages: data?.totalPages ?? 1,
     isLoading: query.isPending,
     isError: query.isError,
     error: query.error,
     refetch: () => void query.refetch(),
-    hasMore: Boolean(query.hasNextPage),
-    isFetchingNextPage: query.isFetchingNextPage,
-    loadMore: () => void query.fetchNextPage(),
   };
 }
 
@@ -167,7 +223,7 @@ type InfiniteUsers = {
   pageParams: Array<string | undefined>;
 };
 
-/** 用户昵称搜索。q 为空时不发请求。 */
+/** 用户搜索仍走游标 + 加载更多(结果量通常较小) */
 export function useUserSearch(params: { q: string; enabled?: boolean }): {
   items: CommunityUserSummary[];
   isLoading: boolean;
@@ -179,8 +235,7 @@ export function useUserSearch(params: { q: string; enabled?: boolean }): {
   loadMore: () => void;
 } {
   const keyword = params.q.trim();
-  const enabled = (params.enabled ?? true) && keyword.length > 0;
-
+  const enabled = (params.enabled ?? true) && Boolean(keyword);
   const query = useInfiniteQuery({
     queryKey: communityKeys.users({ q: keyword }),
     queryFn: ({ pageParam, signal }) =>

@@ -18,6 +18,7 @@ export const TASK_TYPE_LABEL: Record<string, string> = {
   IMAGE_GENERATE: '生图',
   IMAGE_EDIT: '改图',
   TEXT_COPY: '文案',
+  TEXT_TITLE: '标题',
 };
 
 export const PRODUCT_STATUS_OPTIONS = [

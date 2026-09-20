@@ -15,6 +15,7 @@ const ADMIN_MESSAGES: Record<string, string> = {
   [ERROR_CODES.PROVIDER_URL_NOT_ALLOWED]:
     'API 地址被拒绝:仅允许公网 HTTPS 地址,内网、回环与云元数据地址不被接受',
   [ERROR_CODES.FORBIDDEN]: '当前管理员没有执行该操作的权限',
+  [ERROR_CODES.CSRF_FAILED]: '安全校验失败,请刷新页面后再试(不要用过期标签页提交)',
 };
 
 export function adminErrorMessage(error: unknown): string {

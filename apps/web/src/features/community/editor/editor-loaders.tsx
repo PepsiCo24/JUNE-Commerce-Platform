@@ -46,6 +46,7 @@ export function DraftEditorLoader({ draftId }: { draftId: string }): React.JSX.E
       initialJson={draft.contentJson}
       initialImages={imagesQuery.data ?? []}
       initialCoverAssetId={draft.coverAssetId}
+      initialCategory={draft.category}
     />
   );
 }
@@ -95,6 +96,7 @@ function PublishedEditor({ post, assets }: { post: PostDetail; assets: AssetView
       initialHtml={post.contentHtml}
       initialImages={assets}
       initialCoverAssetId={inferCoverAssetId(post, assets)}
+      initialCategory={post.category}
     />
   );
 }

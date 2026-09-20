@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { type CursorResult, type PostListItem, type PublicUserProfile } from '@june/shared';
+import { type PageResult, type PostListItem, type PublicUserProfile } from '@june/shared';
 import { UserStatus } from '@june/db';
 
 import { AppException } from '../../common/errors/app-exception';
@@ -54,7 +54,10 @@ export class UserProfileService {
     };
   }
 
-  async listPublicPosts(userId: string, query: { limit: number; cursor?: string | null }): Promise<CursorResult<PostListItem>> {
+  async listPublicPosts(
+    userId: string,
+    query: { page: number; pageSize: number },
+  ): Promise<PageResult<PostListItem>> {
     const exists = await this.prisma.db.user.findFirst({
       where: { id: userId, status: UserStatus.ACTIVE, deletedAt: null },
       select: { id: true },
@@ -65,9 +68,10 @@ export class UserProfileService {
 
     return this.posts.list(
       {
-        limit: query.limit,
-        cursor: query.cursor ?? undefined,
+        page: query.page,
+        pageSize: query.pageSize,
         sort: 'latest',
+        category: 'all',
         authorId: userId,
         mine: false,
       },

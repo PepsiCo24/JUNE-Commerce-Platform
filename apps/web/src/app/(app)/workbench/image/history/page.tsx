@@ -11,7 +11,7 @@ export default function WorkbenchImageHistoryPage(): React.JSX.Element {
       title="生图历史"
       description="查看已提交的生图任务。点击进入详情,状态一律从后端读取。"
       fixedType="IMAGE_GENERATE"
-      detailHref={(task) => `/workbench/image?taskId=${task.id}`}
+      detailTarget="image"
     />
   );
 }

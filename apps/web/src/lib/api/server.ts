@@ -12,7 +12,17 @@ import { ApiError, NetworkError, toApiError } from './errors';
  *  3. 只做读取。写操作统一走浏览器侧客户端,以便正确携带 CSRF 与展示提交状态。
  */
 
-const INTERNAL_API_ORIGIN = process.env.INTERNAL_API_ORIGIN ?? 'http://127.0.0.1:3001';
+function resolveInternalApiOrigin(): string {
+  const explicit = process.env.INTERNAL_API_ORIGIN?.trim();
+  if (explicit) return explicit;
+  const publicOrigin = process.env.PUBLIC_API_ORIGIN?.trim();
+  if (publicOrigin) return publicOrigin;
+  const devOrigin = process.env.DEV_API_ORIGIN?.trim();
+  if (devOrigin) return devOrigin;
+  return 'http://127.0.0.1:3001';
+}
+
+const INTERNAL_API_ORIGIN = resolveInternalApiOrigin();
 
 export interface ServerFetchOptions {
   query?: Record<string, string | number | boolean | null | undefined>;

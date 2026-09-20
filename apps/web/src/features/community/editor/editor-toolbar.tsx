@@ -143,7 +143,7 @@ export function EditorToolbar({
   return (
     <div
       className={cn(
-        'sticky top-14 z-40 flex flex-wrap items-center gap-0.5 rounded-lg border border-border-default bg-bg-elevated/95 p-1.5 shadow-sm backdrop-blur',
+        'sticky top-14 z-40 flex flex-wrap items-center gap-0.5 rounded-lg border border-border-default bg-bg-elevated p-1.5 shadow-sm',
         className,
       )}
       role="toolbar"
@@ -238,6 +238,7 @@ function TBtn({
       aria-label={label}
       aria-pressed={active ?? false}
       disabled={disabled}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className={cn(
         'inline-flex h-8 min-w-8 items-center justify-center rounded-sm px-1.5 text-xs text-fg-muted transition-colors',
@@ -265,6 +266,7 @@ function MoreBtn({
     <button
       type="button"
       disabled={disabled}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-fg hover:bg-surface-hover disabled:opacity-40"
     >

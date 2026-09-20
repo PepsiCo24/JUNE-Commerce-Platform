@@ -503,13 +503,37 @@
   animation: community-card-enter 180ms ease-out both;
 }
 
-/* 社区列表页浅灰底(不改全局 --bg,避免影响其它浅色页) */
+/* 社区列表页:浅/深底 + 两侧光晕 + 细网格,减少大屏两侧空洞感 */
 .bg-community-feed {
-  background-color: #f5f7f8;
+  background-color: #f3f5f7;
+  background-image:
+    radial-gradient(ellipse 48% 55% at 0% 35%, color-mix(in srgb, var(--color-brand-teal) 16%, transparent), transparent 72%),
+    radial-gradient(ellipse 44% 50% at 100% 55%, color-mix(in srgb, var(--color-brand-purple) 14%, transparent), transparent 68%),
+    radial-gradient(ellipse 80% 40% at 50% -8%, color-mix(in srgb, var(--color-brand-teal) 10%, transparent), transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--fg) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--fg) 4%, transparent) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    44px 44px,
+    44px 44px;
 }
 
 [data-theme='dark'] .bg-community-feed {
   background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse 50% 58% at -5% 28%, color-mix(in srgb, var(--color-brand-teal) 28%, transparent), transparent 68%),
+    radial-gradient(ellipse 48% 52% at 105% 58%, color-mix(in srgb, var(--color-brand-purple) 24%, transparent), transparent 65%),
+    radial-gradient(ellipse 70% 40% at 50% 105%, color-mix(in srgb, var(--color-brand-teal) 14%, transparent), transparent 60%),
+    linear-gradient(color-mix(in srgb, var(--fg) 5.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--fg) 5.5%, transparent) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    44px 44px,
+    44px 44px;
 }
 
 /* ==========================================================================

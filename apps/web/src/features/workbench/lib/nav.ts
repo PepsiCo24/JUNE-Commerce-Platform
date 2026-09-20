@@ -4,14 +4,15 @@
 
 import {
   HardDrive,
+  Heading,
   History,
   ImagePlus,
   KeyRound,
   type LucideIcon,
   Network,
-  Package,
   PenLine,
   Store,
+  Wallet,
 } from 'lucide-react';
 
 export interface WorkbenchNavItem {
@@ -22,12 +23,13 @@ export interface WorkbenchNavItem {
 }
 
 export const WORKBENCH_NAV_ITEMS: WorkbenchNavItem[] = [
-  { href: '/workbench/image', label: '生图', icon: ImagePlus, description: '参考图与提示词生成商品图' },
-  { href: '/workbench/copy', label: '文案', icon: PenLine, description: '标题与正文生成与内容检查' },
-  { href: '/workbench/shops', label: '店铺', icon: Store, description: '主子店铺与继承关系管理' },
+  { href: '/workbench/image', label: 'AI 生图', icon: ImagePlus, description: '参考图与提示词生成商品图' },
+  { href: '/workbench/title', label: '标题生成', icon: Heading, description: '商品营销标题候选生成与保存' },
+  { href: '/workbench/copy', label: '文案生成', icon: PenLine, description: '商品正文生成与内容检查' },
+  { href: '/workbench/shops', label: '我的店铺', icon: Store, description: '主子店铺、商品与凭据管理' },
   { href: '/workbench/shops/graph', label: '店铺关系图', icon: Network, description: '主子店铺结构可视化' },
-  { href: '/workbench/products', label: '商品', icon: Package, description: '商品资料与 CSV 批量导入' },
   { href: '/workbench/credentials', label: '凭据', icon: KeyRound, description: '店铺账号密码(需重新验证)' },
+  { href: '/workbench/alipay', label: '支付宝账户', icon: Wallet, description: '信息管理 · 支付宝登录账户' },
   { href: '/workbench/tasks', label: '任务记录', icon: History, description: '历史生成任务与结果回看' },
   { href: '/workbench/storage', label: '存储', icon: HardDrive, description: '用量、配额与增长' },
 ];

@@ -1,8 +1,8 @@
 /**
  * BrandLogo —— JUNE 品牌标识的**唯一**渲染入口。
  *
- * ⚠ 待对照用户提供的品牌设计图校准(当前几何为按书面规则制作的初稿)。
- *   校准时只需要改本文件顶部的几何常量,所有页面会一起更新。
+ * 几何已按官方品牌设计稿校准(左 J 左向弯钩 + 右 E 三横 + 紫色连接珠)。
+ * 只需改本文件顶部的几何常量,所有页面会一起更新。
  *
  * 约束:
  *   · 所有页面的 Logo 必须来自这个组件,禁止各页面自行拼 <svg> 或 <img>。
@@ -34,37 +34,32 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * 完整细节版图标:E 的三道横画 + J 的竖笔与四分之一圆弧。
- * E 的上横走到 x=52 就换色变成 J 的竖笔,这是两个字母唯一的实体融合点;
- * E 的下横在 x=22 收笔,与圆弧落点之间留 4 单位缺口,由紫色连接珠桥接。
+ * 完整细节版图标(对照官方设计稿):
+ *   · J(主色)在左:竖笔 + 左下四分之一弧(与字标 J 同构)
+ *   · E(青绿)在右:三道独立横画,无竖脊(竖脊由 J 承担)
+ *   · 紫色连接珠落在 J 内侧凹槽(竖笔与弯钩之间的负空间),
+ *     画在 J 笔画之下;切勿压在钩底外侧,否则会露出实心紫点
  */
 const ICON_DETAILED = {
   strokeWidth: 8,
-  /** E:上横(右端延伸出去给 J)+ 竖脊 + 下横;以及单独的中横 */
-  accentPaths: ['M52 12 H12 V51 H22', 'M12 31 H30'],
-  /** J:竖笔 + 圆心 (34,33) 半径 18 的四分之一弧,切线与竖笔、下横完全连续 */
-  primaryPath: 'M52 12 V33 A18 18 0 0 1 34 51',
-  /** J 与 E 的连接处:坐在缺口上并压住两端笔尖 */
-  node: { cx: 28, cy: 51, r: 5 },
+  /** E:上 / 中 / 下三道横画 */
+  accentPaths: ['M28 12 H52', 'M34 31 H48', 'M30 51 H52'],
+  /** J:竖笔 + 圆心 (20,36) 半径 16 的左向四分之一弧 */
+  primaryPath: 'M20 12 V36 A16 16 0 0 1 8 52',
+  /** J 内侧凹槽质心(对照设计稿取样 ≈29,39) */
+  node: { cx: 29, cy: 39, r: 5 },
 } as const;
 
 /**
- * 简化版图标:笔画由 8 加粗到 10、中横缩短、下横缺口由 4 单位收到 3 单位。
- *
- * 中横是缩短而不是删除:实测整条删掉之后,图标在 24 / 32px 下会退化成
- * 「圆角方块 + 右下角缺口」,E 完全消失,辨识度反而下降。
- * 本图标是等线设计(笔画同宽),并不存在「最细的笔画」,
- * 真正先在小尺寸下崩掉的是缺口与连接珠,不是中横。
- * 详见 docs/BRAND.md 的辨识度检查一节。
- *
- * 连接珠加粗后正好内接于笔画带(46..56),不再外凸,小尺寸下边缘更干净。
- * 外框与墨迹范围与完整版完全相同(8..56),两者可以原地互换而不产生跳动。
+ * 简化版图标:笔画加粗到 10、中横略缩短,便于 ≤32px 渲染。
+ * 外框与墨迹范围与完整版一致(8..56),可原地互换。
+ * 单色 / 应用图标场景不画连接珠(设计稿 mono / app icon 无紫色点)。
  */
 const ICON_SIMPLIFIED = {
   strokeWidth: 10,
-  accentPaths: ['M51 13 H13 V51 H20', 'M13 32 H28'],
-  primaryPath: 'M51 13 V33 A18 18 0 0 1 33 51',
-  node: { cx: 26, cy: 51, r: 5 },
+  accentPaths: ['M29 13 H51', 'M33 32 H47', 'M29 51 H51'],
+  primaryPath: 'M19 13 V36 A15 15 0 0 1 9 51',
+  node: { cx: 29, cy: 39, r: 4.5 },
 } as const;
 
 /** JUNE 字标:定制手绘 path,不依赖任何字体文件。 */
@@ -105,27 +100,25 @@ const WORDMARK_TRANSFORM = 'translate(106 0)';
 // ---------------------------------------------------------------------------
 // 主题配色
 //
-// 全部取自 COLOR_SCALES,不新起色值。
-// 浅色主题刻意不使用品牌青绿本体 #56DECD(白底仅 1.6:1)与辅助紫 #9B8AFB
-// (白底约 2.8:1),二者都低于 WCAG 对图形元素要求的 3:1;
-// 浅底一律降到 teal[700] #0C7E72(4.95:1)与 purple[500] #7B65F7(约 4.2:1)。
+// 全部取自 COLOR_SCALES。设计稿深浅底的 E 均使用品牌青绿本体 teal[400]。
 // ---------------------------------------------------------------------------
 
 const PALETTES = {
   dark: {
     /** J / JUN */
     primary: COLOR_SCALES.ivory[50],
-    /** E */
+    /** E —— 设计稿深浅底均使用品牌青绿本体 */
     accent: COLOR_SCALES.teal[400],
-    /** J 与 E 的连接点 */
+    /** J 弯钩内侧连接珠(深底) */
     node: COLOR_SCALES.purple[400],
     subtitle: COLOR_SCALES.ivory[200],
   },
   light: {
     primary: COLOR_SCALES.indigo[900],
-    accent: COLOR_SCALES.teal[700],
+    accent: COLOR_SCALES.teal[400],
+    /** 浅底连接珠用更深一档,保证对比度 */
     node: COLOR_SCALES.purple[500],
-    subtitle: COLOR_SCALES.neutral[600],
+    subtitle: COLOR_SCALES.indigo[900],
   },
   mono: {
     primary: 'currentColor',
@@ -192,23 +185,32 @@ function IconGlyph({
   palette,
   simplified,
   transform,
+  showNode,
 }: {
   palette: Palette;
   simplified: boolean;
   transform: string | undefined;
+  /** mono / 应用图标场景不画紫色连接珠 */
+  showNode: boolean;
 }): ReactElement {
   const glyph = simplified ? ICON_SIMPLIFIED : ICON_DETAILED;
 
   return (
     <g transform={transform}>
+      {/* E 在最底 */}
       <g fill="none" strokeWidth={glyph.strokeWidth} strokeLinecap="round" strokeLinejoin="round">
         {glyph.accentPaths.map((d) => (
           <path key={d} d={d} stroke={palette.accent} />
         ))}
+      </g>
+      {/* 紫珠夹在 E 与 J 之间:J 覆盖后只露出弯钩内侧的新月形过渡 */}
+      {showNode ? (
+        <circle cx={glyph.node.cx} cy={glyph.node.cy} r={glyph.node.r} fill={palette.node} />
+      ) : null}
+      {/* J 在最上,盖住紫珠外沿 */}
+      <g fill="none" strokeWidth={glyph.strokeWidth} strokeLinecap="round" strokeLinejoin="round">
         <path d={glyph.primaryPath} stroke={palette.primary} />
       </g>
-      {/* 紫色点缀:J 的圆弧闭合回 E 的连接处 */}
-      <circle cx={glyph.node.cx} cy={glyph.node.cy} r={glyph.node.r} fill={palette.node} />
     </g>
   );
 }
@@ -330,7 +332,12 @@ export function BrandLogo({
     >
       {title === undefined ? null : <title>{title}</title>}
 
-      <IconGlyph palette={palette} simplified={simplified} transform={layout.iconTransform} />
+      <IconGlyph
+        palette={palette}
+        simplified={simplified}
+        transform={layout.iconTransform}
+        showNode={theme !== 'mono'}
+      />
 
       {layoutKey === 'icon' ? null : <WordmarkGlyph palette={palette} />}
       {layoutKey === 'full' ? <SubtitleText palette={palette} /> : null}

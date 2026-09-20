@@ -1,10 +1,6 @@
-import { pageTitle } from '@june/shared';
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import { ProductListPage } from '@/features/workbench/components/product-list';
-
-export const metadata: Metadata = { title: pageTitle('商品') };
-
-export default function WorkbenchProductsPage(): React.JSX.Element {
-  return <ProductListPage />;
+/** 商品维护已收纳到各店铺详情内,保留路由以免旧链接失效 */
+export default function WorkbenchProductsRedirectPage(): never {
+  redirect('/workbench/shops');
 }

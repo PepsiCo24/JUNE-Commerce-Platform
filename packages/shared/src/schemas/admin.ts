@@ -217,16 +217,20 @@ export type ModelConfigCreateInput = z.infer<typeof modelConfigCreateSchema>;
 
 export const modelConfigUpdateSchema = modelConfigCreateSchema.partial().omit({ providerId: true });
 
+const modelPolicyScopeSchema = z.object({
+  mode: z.enum(['user_selectable', 'fixed']),
+  fixedModelId: idSchema.nullable(),
+});
+
 /** 模型选择策略设置 */
 export const modelPolicyUpdateSchema = z.object({
-  image: z.object({
-    mode: z.enum(['user_selectable', 'fixed']),
-    fixedModelId: idSchema.nullable(),
-  }),
-  text: z.object({
-    mode: z.enum(['user_selectable', 'fixed']),
-    fixedModelId: idSchema.nullable(),
-  }),
+  image: modelPolicyScopeSchema,
+  text: modelPolicyScopeSchema,
+  title: modelPolicyScopeSchema
+    .extend({
+      inheritFromText: z.boolean().default(true),
+    })
+    .optional(),
 });
 export type ModelPolicyUpdateInput = z.infer<typeof modelPolicyUpdateSchema>;
 

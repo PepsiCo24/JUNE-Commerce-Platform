@@ -4,14 +4,35 @@ import { HOT_SCORE_WEIGHTS, type PostListItem } from '@june/shared';
  * 社区模块的纯函数。
  */
 
+/**
+ * 规范化动态路由里的 slug。
+ * Next 有时传入已 decode 的中文,有时仍带 % 编码;统一 decode 一次再用于 API 与链接,避免二次编码导致 404。
+ */
+export function normalizePostSlug(raw: string): string {
+  let slug = raw.trim();
+  if (!slug) return slug;
+  try {
+    if (/%[0-9A-Fa-f]{2}/.test(slug)) {
+      slug = decodeURIComponent(slug);
+    }
+  } catch {
+    // 保留原值
+  }
+  return slug;
+}
+
+function encodedPostSlug(slug: string): string {
+  return encodeURIComponent(normalizePostSlug(slug));
+}
+
 /** 帖子稳定公开链接的路径。发布时 slug 固定,之后改标题也不会变。 */
 export function postPublicPath(slug: string): string {
-  return `/p/${encodeURIComponent(slug)}`;
+  return `/p/${encodedPostSlug(slug)}`;
 }
 
 /** 社区内的帖子详情路径 */
 export function postDetailPath(slug: string): string {
-  return `/community/posts/${encodeURIComponent(slug)}`;
+  return `/community/posts/${encodedPostSlug(slug)}`;
 }
 
 export function postEditPath(slug: string): string {

@@ -25,6 +25,7 @@ export const MODEL_POLICY_KEY = 'models.policy';
 export const DEFAULT_MODEL_POLICY: ModelSelectionPolicy = {
   image: { mode: 'user_selectable', fixedModelId: null },
   text: { mode: 'user_selectable', fixedModelId: null },
+  title: { mode: 'user_selectable', fixedModelId: null, inheritFromText: true },
 };
 
 /** 公开配置缓存时长。真正的失效靠 key 里的 version,TTL 只是兜底回收。 */
@@ -123,7 +124,11 @@ export class ModelConfigService {
       this.logger.warn(`模型策略配置格式异常,已回落为用户可选:${parsed.error.issues[0]?.message ?? ''}`);
       return DEFAULT_MODEL_POLICY;
     }
-    return parsed.data;
+    return {
+      image: parsed.data.image,
+      text: parsed.data.text,
+      title: parsed.data.title ?? DEFAULT_MODEL_POLICY.title,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -167,12 +172,18 @@ export class ModelConfigService {
       options.filter((o) => o.capabilities.includes('TEXT')),
       policy.text,
     );
+    const titlePolicy = policy.title.inheritFromText ? policy.text : policy.title;
+    const titleModels = this.applyPolicy(
+      options.filter((o) => o.capabilities.includes('TEXT')),
+      titlePolicy,
+    );
 
     const response: PublicModelConfigResponse = {
       version,
       policy,
       imageModels,
       textModels,
+      titleModels,
       concurrency: {
         imagePerUserRunning: this.env.CONCURRENCY_IMAGE_PER_USER_RUNNING,
         imagePerUserPending: this.env.CONCURRENCY_IMAGE_PER_USER_PENDING,

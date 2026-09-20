@@ -344,9 +344,10 @@ services:
       # Next standalone 读 PORT;.env.example 里的变量名是 WEB_PORT,这里做映射
       PORT: ${WEB_PORT:-3000}
       HOSTNAME: 0.0.0.0
-      # 说明:web 的服务端渲染通过 PUBLIC_API_ORIGIN(经 Nginx)访问 API。
-      # 若容器内无法解析对外域名(常见于内网 DNS 未回环),取消下面的 extra_hosts
-      # 注释,把域名指到宿主机网关 IP,让流量绕回本机 Nginx。
+      # RSC 服务端渲染直连 API 容器,避免 127.0.0.1:3001 在 web 容器内不可达
+      INTERNAL_API_ORIGIN: http://api:3001
+      # 浏览器仍走 Nginx 的 PUBLIC_API_ORIGIN;若容器内无法解析对外域名,
+      # 可取消 extra_hosts 注释,把域名指到宿主机网关 IP。
     # extra_hosts:
     #   - "your-domain.example.com:172.17.0.1"
     depends_on:

@@ -176,12 +176,16 @@ export class ProductsService {
    * 文案页面用的轻量商品选择列表,只返回自己的商品。
    * 归档商品不参与文案生成,因此不出现在选择器里。
    */
-  async options(user: AuthUser, query: { q?: string; limit: number }): Promise<ProductOption[]> {
+  async options(user: AuthUser, query: { q?: string; shopId?: string; limit: number }): Promise<ProductOption[]> {
+    if (query.shopId) {
+      await this.shops.mustOwn(user, query.shopId);
+    }
     const rows = await this.prisma.db.product.findMany({
       where: {
         ownerId: user.id,
         deletedAt: null,
         status: { not: ProductStatus.ARCHIVED },
+        ...(query.shopId ? { shopId: query.shopId } : {}),
         ...(query.q
           ? {
               OR: [

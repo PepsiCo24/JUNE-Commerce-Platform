@@ -89,8 +89,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers.set('Content-Type', 'application/json');
   }
 
-  // 只有会改变状态的请求需要 CSRF 头
-  if (MUTATING_METHODS.has(method) && csrfToken) {
+  // 只有会改变状态的请求需要 CSRF 头。
+  // 若调用方已显式传入(如 adminApi 从 june_csrf Cookie 回填),不得用内存令牌覆盖——
+  // 管理站会话与站点会话的 CSRF 可能不同,覆盖会导致 CSRF_FAILED。
+  if (MUTATING_METHODS.has(method) && csrfToken && !headers.has(CSRF_HEADER)) {
     headers.set(CSRF_HEADER, csrfToken);
   }
   if (options.reauthToken) {

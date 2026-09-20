@@ -48,7 +48,12 @@ export function Tabs({
     <div
       ref={listRef}
       role="tablist"
-      className={cn('flex items-center gap-1 overflow-x-auto border-b border-border-default', className)}
+      className={cn(
+        'flex items-center gap-1 overflow-x-auto border-b border-border-default',
+        // 窄屏仍可横滑,但不显示滚动条(深色主题下易看成多余竖条)
+        '[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+        className,
+      )}
     >
       {items.map((item, index) => {
         const selected = item.value === value;

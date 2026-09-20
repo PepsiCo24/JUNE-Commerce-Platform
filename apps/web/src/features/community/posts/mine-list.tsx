@@ -3,11 +3,12 @@
 import type { MyPostStatus } from '@/features/community/api';
 import { FileText, PenLine } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
 
 import { EmptyState, ErrorState } from '@/components/feedback/states';
 import { Button } from '@/components/ui/button';
-import { LoadMore } from '@/components/ui/pagination';
+import { Pagination } from '@/components/ui/pagination';
 import { Tabs } from '@/components/ui/tabs';
 
 import { useCommunityListSync } from '../hooks/use-community-sse';
@@ -24,18 +25,38 @@ const STATUS_TABS: Array<{ value: MyPostStatus; label: string }> = [
 ];
 
 export function MineList(): React.JSX.Element {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const [status, setStatus] = useState<MyPostStatus>('ALL');
-  const params = useMemo(() => ({ status }), [status]);
+  const params = useMemo(() => ({ status, page }), [status, page]);
   const list = useMyPostList(params);
   useCommunityListSync();
 
+  const setPage = useCallback(
+    (next: number) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (next <= 1) nextParams.delete('page');
+      else nextParams.set('page', String(next));
+      const query = nextParams.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [pathname, router, searchParams],
+  );
+
+  const onStatusChange = useCallback(
+    (value: string) => {
+      setStatus(value as MyPostStatus);
+      setPage(1);
+    },
+    [setPage],
+  );
+
   return (
     <div className="flex flex-col gap-6">
-      <Tabs
-        value={status}
-        onChange={(value) => setStatus(value as MyPostStatus)}
-        items={STATUS_TABS}
-      />
+      <Tabs value={status} onChange={onStatusChange} items={STATUS_TABS} />
 
       {list.isLoading ? <PostGridSkeleton /> : null}
 
@@ -71,7 +92,12 @@ export function MineList(): React.JSX.Element {
               />
             ))}
           </div>
-          <LoadMore hasMore={list.hasMore} loading={list.isFetchingNextPage} onLoadMore={list.loadMore} />
+          <Pagination
+            page={list.page}
+            pageSize={list.pageSize}
+            total={list.total}
+            onPageChange={setPage}
+          />
         </>
       ) : null}
     </div>

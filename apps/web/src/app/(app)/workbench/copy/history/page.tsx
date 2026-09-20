@@ -11,7 +11,7 @@ export default function WorkbenchCopyHistoryPage(): React.JSX.Element {
       title="文案历史"
       description="查看已提交的文案任务。未通过内容检查的结果不会当作成功展示。"
       fixedType="TEXT_COPY"
-      detailHref={(task) => `/workbench/copy?taskId=${task.id}`}
+      detailTarget="copy"
     />
   );
 }

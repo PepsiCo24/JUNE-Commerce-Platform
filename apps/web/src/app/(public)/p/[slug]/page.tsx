@@ -2,18 +2,14 @@ import { htmlToExcerpt, pageTitle, type PostDetail } from '@june/shared';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { loadPostBySlug } from '@/features/community/load-post';
 import { postDetailPath } from '@/features/community/utils';
-import { serverGetCaught } from '@/lib/api/server';
 
 type PageProps = { params: Promise<{ slug: string }> };
 
-async function loadPost(slug: string) {
-  return serverGetCaught<PostDetail>(`/community/posts/${encodeURIComponent(slug)}`);
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const result = await loadPost(slug);
+  const result = await loadPostBySlug(slug);
   if (!result.ok) {
     return { title: pageTitle('帖子') };
   }

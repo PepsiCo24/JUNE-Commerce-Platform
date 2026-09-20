@@ -4,7 +4,7 @@ import {
   myPostListQuerySchema,
   postListQuerySchema,
   postPublishSchema,
-  type CursorResult,
+  type PageResult,
   type PostDetail,
   type PostListItem,
   type PostListQuery,
@@ -31,13 +31,13 @@ type MyPostListQueryInput = z.infer<typeof myPostListQuerySchema>;
 export class PostsController {
   constructor(private readonly posts: PostsService) {}
 
-  /** 帖子大厅:置顶优先,其余按 latest / hot 排序,游标分页 */
+  /** 帖子大厅:默认按点赞量排序;支持分类筛选与关键词搜索(标题/摘要/正文/作者昵称) */
   @Public()
   @Get('posts')
   async list(
     @Query(zodQuery(postListQuerySchema)) query: PostListQuery,
     @OptionalUser() user: AuthUser | null,
-  ): Promise<CursorResult<PostListItem>> {
+  ): Promise<PageResult<PostListItem>> {
     return this.posts.list(query, user);
   }
 
@@ -46,7 +46,7 @@ export class PostsController {
   async listMine(
     @CurrentUser() user: AuthUser,
     @Query(zodQuery(myPostListQuerySchema)) query: MyPostListQueryInput,
-  ): Promise<CursorResult<PostListItem>> {
+  ): Promise<PageResult<PostListItem>> {
     return this.posts.listMine(user, query);
   }
 

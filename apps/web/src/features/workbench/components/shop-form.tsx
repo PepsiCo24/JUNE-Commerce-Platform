@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  PLATFORM_ACCOUNT_MAX,
   SHOP_NAME_MAX,
   shopCreateSchema,
   shopUpdateSchema,
@@ -34,6 +35,9 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
   const [name, setName] = useState(shop?.name ?? '');
   const [parentId, setParentId] = useState<string | null>(shop?.parentId ?? null);
   const [platform, setPlatform] = useState(shop?.platform ?? '');
+  const [platformAccount, setPlatformAccount] = useState(shop?.platformAccount ?? '');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [clearLoginPassword, setClearLoginPassword] = useState(false);
   const [url, setUrl] = useState(shop?.url ?? '');
   const [description, setDescription] = useState(shop?.description ?? '');
   const [contactName, setContactName] = useState(shop?.contactName ?? '');
@@ -55,6 +59,7 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
       const payload: ShopUpdateInput = {
         name,
         platform: platform || null,
+        platformAccount: platformAccount.trim() || null,
         url: url || null,
         description: description || null,
         contactName: contactName || null,
@@ -63,6 +68,11 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
         status,
         parentId,
         propagateToChildren,
+        ...(clearLoginPassword
+          ? { clearLoginPassword: true }
+          : loginPassword
+            ? { loginPassword }
+            : {}),
       };
       const parsed = shopUpdateSchema.safeParse(payload);
       if (!parsed.success) {
@@ -84,12 +94,14 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
       name,
       parentId,
       platform: platform || null,
+      platformAccount: platformAccount.trim() || null,
       url: url || null,
       description: description || null,
       contactName: contactName || null,
       contactInfo: contactInfo || null,
       note: note || null,
       status,
+      ...(loginPassword ? { loginPassword } : {}),
     };
     const parsed = shopCreateSchema.safeParse(payload);
     if (!parsed.success) {
@@ -119,7 +131,7 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
 
       {parentId ? (
         <InlineAlert tone="info">
-          创建子店时,未填写的平台 / 联系人 / 联系方式 / 备注会继承自主店;账号密码不会继承。
+          创建子店时,未填写的平台 / 联系人 / 联系方式 / 备注会继承自主店;平台账号与登录密码不会继承。
         </InlineAlert>
       ) : null}
       {formError ? <InlineAlert>{formError}</InlineAlert> : null}
@@ -142,6 +154,58 @@ export function ShopForm({ shop }: { shop?: ShopDetail }): React.JSX.Element {
         <Field label="平台" htmlFor="shop-platform" error={fieldErrors.platform}>
           <Input id="shop-platform" value={platform} onChange={(event) => setPlatform(event.target.value)} />
         </Field>
+        <Field
+          label="平台账号"
+          htmlFor="shop-platform-account"
+          description="与店铺名称独立的登录用户名,可含冒号与中文"
+          error={fieldErrors.platformAccount}
+          addon={<CharCounter value={platformAccount} max={PLATFORM_ACCOUNT_MAX} />}
+        >
+          <Input
+            id="shop-platform-account"
+            value={platformAccount}
+            onChange={(event) => setPlatformAccount(event.target.value)}
+            autoComplete="username"
+          />
+        </Field>
+        <Field
+          label={editing ? '登录密码' : '登录密码(可选)'}
+          htmlFor="shop-login-password"
+          description={
+            editing
+              ? shop?.hasPrimaryPassword
+                ? '留空表示保留原密码。密码只保存在主要登录凭据中。'
+                : '填写后将创建主要登录凭据。'
+              : '可选。填写后写入主要登录凭据,不在店铺表重复存密码。'
+          }
+          error={fieldErrors.loginPassword}
+        >
+          <Input
+            id="shop-login-password"
+            type="password"
+            value={loginPassword}
+            disabled={clearLoginPassword}
+            onChange={(event) => setLoginPassword(event.target.value)}
+            autoComplete="new-password"
+            placeholder={editing && shop?.hasPrimaryPassword ? '••••••••' : undefined}
+          />
+        </Field>
+        {editing && shop?.hasPrimaryPassword ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-border-default px-3 py-2">
+            <div>
+              <p className="text-sm text-fg">清除登录密码</p>
+              <p className="text-xs text-fg-muted">仅删除主要登录凭据中的密码,平台账号仍保留</p>
+            </div>
+            <Switch
+              checked={clearLoginPassword}
+              onChange={(checked) => {
+                setClearLoginPassword(checked);
+                if (checked) setLoginPassword('');
+              }}
+              aria-label="清除登录密码"
+            />
+          </div>
+        ) : null}
         <Field label="店铺链接" htmlFor="shop-url" error={fieldErrors.url}>
           <Input id="shop-url" value={url} onChange={(event) => setUrl(event.target.value)} />
         </Field>

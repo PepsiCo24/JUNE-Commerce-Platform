@@ -1,33 +1,36 @@
 'use client';
 
-import type { PostListItem } from '@june/shared';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { PAGE_SIZE_DEFAULT, type PageResult, type PostListItem } from '@june/shared';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import { api } from '@/lib/api/client';
 
 import { communityKeys } from '../api';
 
 export function useUserPosts(userId: string) {
-  const query = useInfiniteQuery({
-    queryKey: communityKeys.userPosts(userId),
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: '20' });
-      if (pageParam) params.set('cursor', pageParam);
-      return api.get<{ items: PostListItem[]; nextCursor: string | null; hasMore: boolean }>(
-        `/community/users/${userId}/posts?${params.toString()}`,
-      );
-    },
-    initialPageParam: null as string | null,
-    getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
+  const [page, setPage] = useState(1);
+  const query = useQuery({
+    queryKey: communityKeys.userPosts(userId, page),
+    queryFn: ({ signal }) =>
+      api.get<PageResult<PostListItem>>(`/community/users/${userId}/posts`, {
+        query: { page, pageSize: PAGE_SIZE_DEFAULT },
+        signal,
+      }),
   });
 
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const data = query.data;
 
   return {
-    items,
+    items: data?.items ?? [],
+    total: data?.total ?? 0,
+    page: data?.page ?? page,
+    pageSize: data?.pageSize ?? PAGE_SIZE_DEFAULT,
+    totalPages: data?.totalPages ?? 1,
     isLoading: query.isLoading,
-    hasMore: query.hasNextPage,
-    fetchNextPage: query.fetchNextPage,
-    isFetchingNextPage: query.isFetchingNextPage,
+    isError: query.isError,
+    error: query.error,
+    setPage,
+    refetch: () => void query.refetch(),
   };
 }

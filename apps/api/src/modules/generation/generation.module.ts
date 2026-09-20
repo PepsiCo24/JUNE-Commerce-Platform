@@ -8,6 +8,8 @@ import { CopyService } from './copy.service';
 import { GenerationController } from './generation.controller';
 import { GenerationService } from './generation.service';
 import { ModelsPublicController } from './models-public.controller';
+import { TitleController } from './title.controller';
+import { TitleService } from './title.service';
 
 /**
  * 生成任务模块(生图 / 文案)。
@@ -20,8 +22,8 @@ import { ModelsPublicController } from './models-public.controller';
  */
 @Module({
   imports: [ModelsModule, ContentModule, AssetsModule],
-  controllers: [GenerationController, CopyController, ModelsPublicController],
-  providers: [GenerationService, CopyService],
+  controllers: [GenerationController, CopyController, TitleController, ModelsPublicController],
+  providers: [GenerationService, CopyService, TitleService],
   exports: [GenerationService],
 })
 export class GenerationModule {}

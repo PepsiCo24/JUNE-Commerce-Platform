@@ -37,7 +37,7 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-50 border-b border-border-default bg-bg-elevated/80 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-[1100px] items-center gap-3 px-4 sm:px-6">
+      <div className="mx-auto flex h-14 w-full max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <MobileNav theme={theme} />
 
         <Link href="/" className="flex shrink-0 items-center rounded-md" aria-label="返回首页">
@@ -45,7 +45,7 @@ export function TopBar({
           <BrandLogo variant="horizontal" theme={theme} size="sm" title="返回首页" />
         </Link>
 
-        <nav aria-label="主导航" className="ml-2 hidden items-center gap-1 md:flex">
+        <nav aria-label="主导航" className="ml-2 hidden shrink-0 items-center gap-1 md:flex">
           {MAIN_NAV.map((item) => {
             const active = isActivePath(pathname, item.href);
             return (
@@ -64,7 +64,10 @@ export function TopBar({
           })}
         </nav>
 
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        {/* 社区大厅等页面可把搜索/筛选 Portal 到这里,避免占主列纵向空间 */}
+        <div id="app-topbar-center" className="mx-2 hidden min-w-0 flex-1 md:block" />
+
+        <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
           <ThemeToggle />
           <ConnectionStatus />
           <UserMenu user={user} theme={theme} />

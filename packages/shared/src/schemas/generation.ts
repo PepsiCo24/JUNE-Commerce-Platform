@@ -94,7 +94,7 @@ export const saveResultToPostSchema = z.object({
 });
 
 export const taskListQuerySchema = cursorQuerySchema.extend({
-  type: z.enum(['IMAGE_GENERATE', 'IMAGE_EDIT', 'TEXT_COPY', 'ALL']).default('ALL'),
+  type: z.enum(['IMAGE_GENERATE', 'IMAGE_EDIT', 'TEXT_COPY', 'TEXT_TITLE', 'ALL']).default('ALL'),
   status: z.enum(['ALL', ...TASK_STATUSES]).default('ALL'),
 });
 
@@ -114,6 +114,8 @@ export interface GenerationResultView {
   } | null;
   /** 文案结果 */
   text: CopyResultPayload | null;
+  /** 标题生成结果 */
+  titles: TitleResultPayload | null;
   errorCode: string | null;
   errorMessage: string | null;
   /** 内容检查结果(文案) */
@@ -122,7 +124,7 @@ export interface GenerationResultView {
 
 export interface GenerationTaskView {
   id: string;
-  type: 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY';
+  type: 'IMAGE_GENERATE' | 'IMAGE_EDIT' | 'TEXT_COPY' | 'TEXT_TITLE';
   status: TaskStatusValue;
   stage: (typeof TASK_STAGES)[number];
   /** 仅当上游返回真实百分比时才有值;为 null 时前端只展示阶段文案 */
@@ -180,9 +182,20 @@ export interface PublicModelOption {
 /**
  * 模型选择策略。fixed 模式下前端隐藏选择器,后端强制使用 fixedModelId。
  */
+export interface ModelPolicyScope {
+  mode: 'user_selectable' | 'fixed';
+  fixedModelId: string | null;
+}
+
+export interface TitleModelPolicy extends ModelPolicyScope {
+  /** 为 true 时标题生成沿用文案(text)的模型策略 */
+  inheritFromText: boolean;
+}
+
 export interface ModelSelectionPolicy {
-  image: { mode: 'user_selectable' | 'fixed'; fixedModelId: string | null };
-  text: { mode: 'user_selectable' | 'fixed'; fixedModelId: string | null };
+  image: ModelPolicyScope;
+  text: ModelPolicyScope;
+  title: TitleModelPolicy;
 }
 
 export interface PublicModelConfigResponse {
@@ -191,6 +204,8 @@ export interface PublicModelConfigResponse {
   policy: ModelSelectionPolicy;
   imageModels: PublicModelOption[];
   textModels: PublicModelOption[];
+  /** 标题生成可选模型(与 text 同源,策略可独立) */
+  titleModels: PublicModelOption[];
   concurrency: {
     imagePerUserRunning: number;
     imagePerUserPending: number;
@@ -278,3 +293,57 @@ export interface CopySaveResponse {
 
 export const CONTENT_CHECK_DISCLAIMER =
   '平台已按后台配置的内容规则完成检查,但各电商平台审核标准会独立调整,平台不保证第三方审核必定通过,请发布前再次自查。';
+
+// ---------------------------------------------------------------------------
+// 标题生成
+// ---------------------------------------------------------------------------
+
+export const TITLE_COUNT_MAX = 10;
+export const TITLE_LENGTH_MAX = 120;
+export const TITLE_LENGTH_MIN = 8;
+
+export const titleGenerateSchema = z
+  .object({
+    modelConfigId: idSchema.optional(),
+    productId: idSchema.nullable().optional(),
+    productName: z.string().trim().max(200).optional(),
+    sellingPoints: z.array(z.string().trim().min(1).max(200)).max(12).default([]),
+    keywords: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    targetPlatform: z.enum(TARGET_PLATFORMS.map((p) => p.value) as [string, ...string[]]),
+    prompt: z.string().trim().max(PROMPT_MAX).optional(),
+    titleCount: z.coerce.number().int().min(1).max(TITLE_COUNT_MAX).default(5),
+    maxTitleLength: z.coerce.number().int().min(TITLE_LENGTH_MIN).max(TITLE_LENGTH_MAX).default(60),
+    idempotencyKey: z.string().min(8).max(80).regex(/^[A-Za-z0-9_-]+$/),
+  })
+  .refine((v) => !!v.productId || !!v.productName || v.sellingPoints.length > 0 || !!v.prompt, {
+    message: '请选择商品或填写商品名称/卖点/补充要求',
+    path: ['productName'],
+  });
+export type TitleGenerateInput = z.infer<typeof titleGenerateSchema>;
+
+export const titleResultPayloadSchema = z.object({
+  titles: z
+    .array(
+      z.object({
+        text: z.string().min(1).max(300),
+        charCount: z.number().int().min(1).max(300),
+      }),
+    )
+    .min(1)
+    .max(TITLE_COUNT_MAX),
+});
+export type TitleResultPayload = z.infer<typeof titleResultPayloadSchema>;
+
+export const titleSaveSchema = z.object({
+  productId: idSchema,
+  title: z.string().trim().min(1).max(300),
+  sourceTaskId: idSchema.nullable().optional(),
+});
+export type TitleSaveInput = z.infer<typeof titleSaveSchema>;
+
+export interface TitleSaveResponse {
+  productId: string;
+  check: ContentCheckOutcome;
+  saved: boolean;
+  disclaimer: string;
+}

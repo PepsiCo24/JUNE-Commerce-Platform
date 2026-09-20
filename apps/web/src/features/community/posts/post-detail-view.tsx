@@ -1,6 +1,7 @@
 'use client';
 
 import type { PostDetail } from '@june/shared';
+import { POST_CATEGORY_LABELS } from '@june/shared';
 import { EyeOff, FileClock } from 'lucide-react';
 import Link from 'next/link';
 
@@ -64,6 +65,16 @@ export function PostDetailView({ post }: { post: PostDetail }): React.JSX.Elemen
       ) : null}
 
       <header className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-surface-hover px-2.5 py-1 text-xs text-fg-muted">
+            {POST_CATEGORY_LABELS[post.category]}
+          </span>
+          {post.isPinned ? (
+            <Badge tone="accent" size="sm">
+              置顶
+            </Badge>
+          ) : null}
+        </div>
         <h1 className="text-2xl font-semibold text-fg sm:text-3xl">{post.title}</h1>
         <div className="flex flex-wrap items-center gap-3">
           <Link href={`/community/users/${post.author.id}`}>
@@ -79,11 +90,6 @@ export function PostDetailView({ post }: { post: PostDetail }): React.JSX.Elemen
               {post.status === 'PUBLISHED' ? ` · ${formatCount(post.viewCount)} 次浏览` : ''}
             </p>
           </div>
-          {post.isPinned ? (
-            <Badge tone="accent" size="sm">
-              置顶
-            </Badge>
-          ) : null}
         </div>
       </header>
 

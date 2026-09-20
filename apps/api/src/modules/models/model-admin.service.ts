@@ -635,6 +635,10 @@ export class ModelAdminService {
     if (dto.text.mode === 'fixed') {
       await this.assertFixedTargetUsable(dto.text.fixedModelId, ['TEXT'], '文案');
     }
+    const titleInput = dto.title ?? before.title;
+    if (!titleInput.inheritFromText && titleInput.mode === 'fixed') {
+      await this.assertFixedTargetUsable(titleInput.fixedModelId, ['TEXT'], '标题生成');
+    }
 
     const value: ModelSelectionPolicy = {
       image: {
@@ -644,6 +648,11 @@ export class ModelAdminService {
       text: {
         mode: dto.text.mode,
         fixedModelId: dto.text.mode === 'fixed' ? dto.text.fixedModelId : null,
+      },
+      title: {
+        mode: titleInput.mode,
+        fixedModelId: titleInput.inheritFromText || titleInput.mode !== 'fixed' ? null : titleInput.fixedModelId,
+        inheritFromText: titleInput.inheritFromText,
       },
     };
 

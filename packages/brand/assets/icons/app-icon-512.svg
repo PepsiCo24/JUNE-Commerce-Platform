@@ -1,35 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  JUNE PWA 应用图标 — 512×512(purpose="maskable",安装界面与启动画面主图)
-
-  ⚠ 待对照用户提供的品牌设计图校准(当前为按书面规则制作的初稿)
-
-  maskable 安全区
-      · 本图标 512 × 80% = 409.6,安全圆半径 = 204.8,圆心 (256, 256)
-      · 图形墨迹 ×5.25 后为 252×252,落在 130..382,外接圆半径 = 126×√2 约 178.2
-      · 178.2 < 204.8,任何遮罩形状下都不会被切
-    图形占幅 252/512 约 49.2%,与 192 档的 96/192 = 50% 在视觉上一致,
-    两档图标放大后可以精确重叠。
-
-  配色与 app-icon-192.svg / apple-touch-icon.svg 完全一致:
-    · 底 indigo[900] #101426(同时也是 manifest 的 theme_color 与 background_color)
-    · 图形 teal[400] #56DECD / 连接点 purple[400] #9B8AFB
+  JUNE PWA 应用图标 — 512×512(maskable)
+  设计稿 app icon:深底 + 象牙白单色 JE。
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
      preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
   <title>JUNE</title>
 
-  <!-- 满幅不透明底板 -->
   <rect x="0" y="0" width="512" height="512" fill="#101426" />
 
-  <!-- 完整细节图形,×5.25 居中,外接圆半径约 178.2,小于安全圆半径 204.8 -->
   <g transform="translate(88 88) scale(5.25)">
-    <g fill="none" stroke="#56DECD" stroke-width="8"
+    <g fill="none" stroke="#F8F6EF" stroke-width="8"
        stroke-linecap="round" stroke-linejoin="round">
-      <path d="M52 12 H12 V51 H22" />
-      <path d="M12 31 H30" />
-      <path d="M52 12 V33 A18 18 0 0 1 34 51" />
+      <path d="M28 12 H52" />
+      <path d="M34 31 H48" />
+      <path d="M30 51 H52" />
+      <path d="M20 12 V36 A16 16 0 0 1 8 52" />
     </g>
-    <circle cx="28" cy="51" r="5" fill="#9B8AFB" />
   </g>
 </svg>

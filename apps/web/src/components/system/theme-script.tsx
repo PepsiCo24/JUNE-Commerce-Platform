@@ -1,9 +1,10 @@
+import Script from 'next/script';
+
 /**
  * 首屏主题初始化脚本,在 React hydration 前写入 data-theme,避免夜间模式闪白。
- * 读取顺序:按当前用户 id 隔离的 localStorage → 匿名键 → 跟随系统。
+ * 必须使用 next/script 的 beforeInteractive,不能在组件里直接渲染 <script>。
  */
-export function ThemeScript(): React.JSX.Element {
-  const script = `
+export const THEME_INIT_SCRIPT = `
 (function(){
   try {
     var keys = Object.keys(localStorage).filter(function(k){ return k.indexOf('june.prefs.theme') === 0; });
@@ -19,5 +20,10 @@ export function ThemeScript(): React.JSX.Element {
 })();
 `.trim();
 
-  return <script dangerouslySetInnerHTML={{ __html: script }} />;
+export function ThemeScript(): React.JSX.Element {
+  return (
+    <Script id="june-theme-init" strategy="beforeInteractive">
+      {THEME_INIT_SCRIPT}
+    </Script>
+  );
 }

@@ -3,6 +3,7 @@ import { ProductStatus, ShopType, type JunePrismaClient, type Prisma, type Shop 
 import {
   ERROR_CODES,
   INHERITABLE_SHOP_FIELD_VALUES,
+  PRIMARY_LOGIN_PURPOSE,
   SHOP_MAX_DEPTH,
   type InheritableShopField,
   type PageResult,
@@ -16,10 +17,12 @@ import {
   type shopListQuerySchema,
   type shopResetInheritanceSchema,
 } from '@june/shared';
+import { nanoid } from 'nanoid';
 import type { z } from 'zod';
 
 import { AuditService } from '../../common/audit/audit.service';
 import type { AuthUser } from '../../common/auth/auth-context';
+import { CryptoService } from '../../common/crypto/crypto.service';
 import { AppException } from '../../common/errors/app-exception';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import type { ClientMeta, ShopDeleteResult } from './commerce.types';
@@ -41,6 +44,13 @@ import {
   type ParentResolver,
 } from './shop-inheritance';
 
+/** 与凭据模块一致的预生成 id 长度 */
+const PRIMARY_CREDENTIAL_ID_LENGTH = 24;
+
+function primaryCredentialAad(credentialId: string): string {
+  return `credential:${credentialId}`;
+}
+
 export type ShopListQuery = z.infer<typeof shopListQuerySchema>;
 export type ShopResetInheritanceInput = z.infer<typeof shopResetInheritanceSchema>;
 
@@ -60,11 +70,16 @@ interface ShopRow {
   type: ShopType;
   status: Shop['status'];
   platform: string | null;
+  platformAccount: string | null;
   url: string | null;
   parentId: string | null;
   createdAt: Date;
   updatedAt: Date;
   parent: { name: string } | null;
+}
+
+interface PrimaryCredentialInfo {
+  id: string;
 }
 
 interface ShopCounts {
@@ -83,6 +98,7 @@ interface ShopRelationGraph {
 export class ShopsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
     private readonly audit: AuditService,
   ) {}
 
@@ -97,11 +113,15 @@ export class ShopsService {
       ...(query.type === 'ALL' ? {} : { type: query.type }),
       ...(query.status === 'ALL' ? {} : { status: query.status }),
       ...(query.parentId ? { parentId: query.parentId } : {}),
+      ...(query.platform
+        ? { platform: { equals: query.platform, mode: 'insensitive' as const } }
+        : {}),
       ...(query.q
         ? {
             OR: [
               { name: { contains: query.q, mode: 'insensitive' } },
               { platform: { contains: query.q, mode: 'insensitive' } },
+              { platformAccount: { contains: query.q, mode: 'insensitive' } },
               { contactName: { contains: query.q, mode: 'insensitive' } },
             ],
           }
@@ -117,6 +137,7 @@ export class ShopsService {
           type: true,
           status: true,
           platform: true,
+          platformAccount: true,
           url: true,
           parentId: true,
           createdAt: true,
@@ -131,10 +152,22 @@ export class ShopsService {
     ]);
 
     // 关联计数批量取,不在循环里查库
-    const counts = await this.countsFor(rows.map((row) => row.id));
+    const rowIds = rows.map((row) => row.id);
+    const [counts, totalProductCounts, primaryByShop] = await Promise.all([
+      this.countsFor(rowIds),
+      this.computeTotalProductCounts(user.id, rowIds),
+      this.primaryCredentialsFor(rowIds),
+    ]);
 
     return {
-      items: rows.map((row) => this.toSummary(row, counts.get(row.id))),
+      items: rows.map((row) =>
+        this.toSummary(
+          row,
+          counts.get(row.id),
+          totalProductCounts.get(row.id) ?? counts.get(row.id)?.productCount ?? 0,
+          primaryByShop.get(row.id) ?? null,
+        ),
+      ),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -183,7 +216,15 @@ export class ShopsService {
   async graph(user: AuthUser): Promise<ShopGraph> {
     const shops = await this.prisma.db.shop.findMany({
       where: { ownerId: user.id, deletedAt: null },
-      select: { id: true, name: true, type: true, status: true, platform: true, parentId: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+        platform: true,
+        platformAccount: true,
+        parentId: true,
+      },
       orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
       take: SHOP_GRAPH_MAX_NODES,
     });
@@ -199,6 +240,7 @@ export class ShopsService {
         status: shop.status,
         productCount: counts.get(shop.id)?.productCount ?? 0,
         platform: shop.platform,
+        platformAccount: shop.platformAccount,
       })),
       // 只连接当前结果集内的店铺,不会因为父店被过滤掉而产生悬空边
       edges: shops.flatMap((shop) =>
@@ -234,22 +276,41 @@ export class ShopsService {
 
     const inheritance = resolveCreateInheritance(input, parent);
 
-    const created = await this.prisma.db.shop.create({
-      data: {
+    if (input.loginPassword && !(input.platformAccount ?? null)) {
+      throw AppException.badRequest(
+        ERROR_CODES.VALIDATION_FAILED,
+        '设置登录密码前请先填写平台账号用户名',
+      );
+    }
+
+    const created = await this.prisma.db.$transaction(async (tx) => {
+      const shop = await tx.shop.create({
+        data: {
+          ownerId: user.id,
+          type: parent ? ShopType.SUB : ShopType.MAIN,
+          status: input.status,
+          name: input.name,
+          url: input.url ?? null,
+          description: input.description ?? null,
+          parentId: parent?.id ?? null,
+          platformAccount: input.platformAccount ?? null,
+          // 生效值写实到子店行上:列表查询无需回溯主店,升为主店时也不会字段变空
+          platform: inheritance.values.platform ?? null,
+          contactName: inheritance.values.contactName ?? null,
+          contactInfo: inheritance.values.contactInfo ?? null,
+          note: inheritance.values.note ?? null,
+          overriddenFields: inheritance.overriddenFields,
+        },
+      });
+
+      await this.syncPrimaryCredential(tx, {
         ownerId: user.id,
-        type: parent ? ShopType.SUB : ShopType.MAIN,
-        status: input.status,
-        name: input.name,
-        url: input.url ?? null,
-        description: input.description ?? null,
-        parentId: parent?.id ?? null,
-        // 生效值写实到子店行上:列表查询无需回溯主店,升为主店时也不会字段变空
-        platform: inheritance.values.platform ?? null,
-        contactName: inheritance.values.contactName ?? null,
-        contactInfo: inheritance.values.contactInfo ?? null,
-        note: inheritance.values.note ?? null,
-        overriddenFields: inheritance.overriddenFields,
-      },
+        shopId: shop.id,
+        platformAccount: shop.platformAccount,
+        loginPassword: input.loginPassword,
+      });
+
+      return shop;
     });
 
     await this.audit.record({
@@ -262,6 +323,7 @@ export class ShopsService {
         type: created.type,
         parentId: created.parentId,
         overriddenFields: created.overriddenFields,
+        hasPrimaryPassword: Boolean(input.loginPassword),
       },
       ip: meta.ip,
       userAgent: meta.userAgent,
@@ -325,9 +387,17 @@ export class ShopsService {
     }
     // 升为主店时清空覆盖标记,但保留当前生效值
 
+    if (input.loginPassword && (input.platformAccount === null || (input.platformAccount === undefined && !before.platformAccount))) {
+      throw AppException.badRequest(
+        ERROR_CODES.VALIDATION_FAILED,
+        '设置登录密码前请先填写平台账号用户名',
+      );
+    }
+
     const data: Prisma.ShopUncheckedUpdateInput = {
       ...inheritableData,
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.platformAccount !== undefined ? { platformAccount: input.platformAccount ?? null } : {}),
       ...(input.url !== undefined ? { url: input.url ?? null } : {}),
       ...(input.description !== undefined ? { description: input.description ?? null } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -346,6 +416,15 @@ export class ShopsService {
           await tx.shop.updateMany(op);
         }
       }
+
+      await this.syncPrimaryCredential(tx, {
+        ownerId: user.id,
+        shopId: updated.id,
+        platformAccount: updated.platformAccount,
+        loginPassword: input.loginPassword,
+        clearLoginPassword: input.clearLoginPassword,
+        accountChanged: input.platformAccount !== undefined,
+      });
 
       return updated;
     });
@@ -815,26 +894,184 @@ export class ShopsService {
     return counts;
   }
 
-  private toSummary(row: ShopRow, counts: ShopCounts | undefined): ShopSummary {
+  private toSummary(
+    row: ShopRow,
+    counts: ShopCounts | undefined,
+    totalProductCount: number,
+    primary: PrimaryCredentialInfo | null,
+  ): ShopSummary {
+    const direct = counts?.productCount ?? 0;
     return {
       id: row.id,
       name: row.name,
       type: row.type,
       status: row.status,
       platform: row.platform,
+      platformAccount: row.platformAccount,
       url: row.url,
       parentId: row.parentId,
       parentName: row.parent?.name ?? null,
-      productCount: counts?.productCount ?? 0,
+      productCount: direct,
+      totalProductCount,
       childCount: counts?.childCount ?? 0,
       credentialCount: counts?.credentialCount ?? 0,
+      hasPrimaryPassword: primary !== null,
+      primaryCredentialId: primary?.id ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
   }
 
+  /** 批量取各店主要登录凭据 id(有记录即视为已设密码) */
+  private async primaryCredentialsFor(shopIds: string[]): Promise<Map<string, PrimaryCredentialInfo>> {
+    const result = new Map<string, PrimaryCredentialInfo>();
+    if (shopIds.length === 0) return result;
+
+    const rows = await this.prisma.db.shopCredential.findMany({
+      where: { shopId: { in: shopIds }, isPrimary: true, deletedAt: null },
+      select: { id: true, shopId: true },
+    });
+    for (const row of rows) {
+      result.set(row.shopId, { id: row.id });
+    }
+    return result;
+  }
+
+  /**
+   * 同步店铺「主要登录账号」凭据。
+   * 密码只落在 ShopCredential(isPrimary),shops 表只存 platformAccount 明文用户名。
+   */
+  private async syncPrimaryCredential(
+    tx: CommerceTransactionClient,
+    params: {
+      ownerId: string;
+      shopId: string;
+      platformAccount: string | null;
+      loginPassword?: string;
+      clearLoginPassword?: boolean;
+      accountChanged?: boolean;
+    },
+  ): Promise<void> {
+    const existing = await tx.shopCredential.findFirst({
+      where: { shopId: params.shopId, isPrimary: true, deletedAt: null },
+    });
+
+    if (params.clearLoginPassword) {
+      if (existing) {
+        await tx.shopCredential.update({
+          where: { id: existing.id },
+          data: { deletedAt: new Date(), isPrimary: false },
+        });
+      }
+      return;
+    }
+
+    if (params.loginPassword) {
+      if (!params.platformAccount) {
+        throw AppException.badRequest(
+          ERROR_CODES.VALIDATION_FAILED,
+          '设置登录密码前请先填写平台账号用户名',
+        );
+      }
+
+      if (existing) {
+        const sealed = this.crypto.seal(params.loginPassword, 'credential', primaryCredentialAad(existing.id));
+        await tx.shopCredential.update({
+          where: { id: existing.id },
+          data: {
+            purpose: PRIMARY_LOGIN_PURPOSE,
+            account: params.platformAccount,
+            passwordCipher: sealed.cipher,
+            passwordIv: sealed.iv,
+            passwordTag: sealed.tag,
+            keyVersion: sealed.keyVersion,
+            passwordUpdatedAt: new Date(),
+            isPrimary: true,
+          },
+        });
+        return;
+      }
+
+      const id = nanoid(PRIMARY_CREDENTIAL_ID_LENGTH);
+      const sealed = this.crypto.seal(params.loginPassword, 'credential', primaryCredentialAad(id));
+      await tx.shopCredential.create({
+        data: {
+          id,
+          shopId: params.shopId,
+          ownerId: params.ownerId,
+          purpose: PRIMARY_LOGIN_PURPOSE,
+          account: params.platformAccount,
+          isPrimary: true,
+          passwordCipher: sealed.cipher,
+          passwordIv: sealed.iv,
+          passwordTag: sealed.tag,
+          keyVersion: sealed.keyVersion,
+          passwordUpdatedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    // 仅改用户名:同步到已有主要凭据的 account 字段
+    if (params.accountChanged && existing && params.platformAccount) {
+      await tx.shopCredential.update({
+        where: { id: existing.id },
+        data: { account: params.platformAccount, purpose: PRIMARY_LOGIN_PURPOSE },
+      });
+    }
+
+    // 平台账号被清空但未明确清密码:保留密码凭据(仍可用旧 account),避免误删
+  }
+
+  /** 批量计算含子店的商品合计,避免逐店查询 */
+  private async computeTotalProductCounts(ownerId: string, shopIds: string[]): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (shopIds.length === 0) return result;
+
+    const [relations, productGroups] = await Promise.all([
+      this.prisma.db.shop.findMany({
+        where: { ownerId, deletedAt: null },
+        select: { id: true, parentId: true },
+      }),
+      this.prisma.db.product.groupBy({
+        by: ['shopId'],
+        where: { ownerId, deletedAt: null },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const direct = new Map(productGroups.map((entry) => [entry.shopId, entry._count._all]));
+    const childrenOf = new Map<string, string[]>();
+    for (const row of relations) {
+      if (!row.parentId) continue;
+      const siblings = childrenOf.get(row.parentId) ?? [];
+      siblings.push(row.id);
+      childrenOf.set(row.parentId, siblings);
+    }
+
+    const collectScope = (rootId: string): string[] => {
+      const scope = [rootId];
+      const stack = [...(childrenOf.get(rootId) ?? [])];
+      while (stack.length > 0) {
+        const id = stack.pop();
+        if (!id) continue;
+        scope.push(id);
+        stack.push(...(childrenOf.get(id) ?? []));
+      }
+      return scope;
+    };
+
+    for (const id of shopIds) {
+      result.set(
+        id,
+        collectScope(id).reduce((sum, shopId) => sum + (direct.get(shopId) ?? 0), 0),
+      );
+    }
+    return result;
+  }
+
   private async buildDetail(shop: Shop): Promise<ShopDetail> {
-    const [parent, counts] = await Promise.all([
+    const [parent, counts, primaryByShop] = await Promise.all([
       shop.parentId
         ? this.prisma.db.shop.findFirst({
             where: { id: shop.parentId, deletedAt: null },
@@ -848,11 +1085,15 @@ export class ShopsService {
           })
         : Promise.resolve(null),
       this.countsFor([shop.id]),
+      this.primaryCredentialsFor([shop.id]),
     ]);
 
+    const totalProductCounts = await this.computeTotalProductCounts(shop.ownerId, [shop.id]);
     const summary = this.toSummary(
       { ...shop, parent: parent ? { name: parent.name } : null },
       counts.get(shop.id),
+      totalProductCounts.get(shop.id) ?? counts.get(shop.id)?.productCount ?? 0,
+      primaryByShop.get(shop.id) ?? null,
     );
 
     return {

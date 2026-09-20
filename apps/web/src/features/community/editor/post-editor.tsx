@@ -2,11 +2,15 @@
 
 import {
   ALLOWED_IMAGE_MIME_TYPES,
+  POST_CATEGORIES,
+  POST_CATEGORY_DEFAULT,
+  POST_CATEGORY_LABELS,
   POST_MAX_IMAGES,
   POST_TITLE_MAX,
   htmlToExcerpt,
   postPublishSchema,
   type AssetView,
+  type PostCategory,
   type PostDetail,
 } from '@june/shared';
 import { useQueryClient } from '@tanstack/react-query';
@@ -49,6 +53,7 @@ export interface PostEditorProps {
   initialJson?: unknown;
   initialImages?: AssetView[];
   initialCoverAssetId?: string | null;
+  initialCategory?: PostCategory;
 }
 
 /**
@@ -68,6 +73,7 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
     initialJson,
     initialImages = [],
     initialCoverAssetId = null,
+    initialCategory = POST_CATEGORY_DEFAULT,
   } = props;
 
   const router = useRouter();
@@ -77,6 +83,7 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
   const insertedIdsRef = useRef(new Set(initialImages.map((item) => item.id)));
 
   const [title, setTitle] = useState(initialTitle);
+  const [category, setCategory] = useState<PostCategory>(initialCategory);
   const [html, setHtml] = useState(initialHtml);
   const [json, setJson] = useState<unknown>(initialJson ?? null);
   const [preview, setPreview] = useState(false);
@@ -135,8 +142,9 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
       contentJson: json,
       coverAssetId: images.coverAssetId,
       imageAssetIds: images.imageAssetIds,
+      category,
     }),
-    [title, html, json, images.coverAssetId, images.imageAssetIds],
+    [title, html, json, images.coverAssetId, images.imageAssetIds, category],
   );
 
   const hasContent =
@@ -188,6 +196,7 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
       excerpt: htmlToExcerpt(html),
       coverAssetId: images.coverAssetId,
       imageAssetIds: images.imageAssetIds,
+      category,
     });
     if (!parsed.success) {
       const map: Record<string, string> = {};
@@ -262,49 +271,66 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
 
   return (
     <div className="flex min-h-dvh flex-col bg-community-feed">
-      <header className="sticky top-0 z-50 border-b border-border-default bg-bg-elevated/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[920px] flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
-          <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
-            <ArrowLeft size={16} aria-hidden />
-            返回
-          </Link>
-          <div className="min-w-0 flex-1">
-            {mode === 'create' ? (
-              <SaveStatus
-                state={autosave.state}
-                savedAt={autosave.savedAt}
-                error={autosave.error}
-                onRetry={autosave.retry}
-              />
-            ) : (
-              <p className="text-xs text-fg-muted">编辑已发布内容不会自动保存,请确认后点击「更新发布」。</p>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={preview ? 'primary' : 'outline'}
-              size="sm"
-              iconLeft={<Eye size={16} />}
-              onClick={() => setPreview((value) => !value)}
-            >
-              {preview ? '继续编辑' : '预览'}
-            </Button>
-            {mode === 'create' ? (
-              <Button variant="secondary" size="sm" onClick={() => void saveDraftNow()} disabled={!hasContent}>
-                存草稿
+      {/* 与 AppShell 顶栏 (h-14) 对齐,避免 sticky 层叠遮挡导致按钮点不到 */}
+      <div className="sticky top-14 z-40 border-b border-border-default bg-bg-elevated/95 backdrop-blur">
+        <header>
+          <div className="mx-auto flex max-w-[920px] flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+            <Link href={backHref} className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg">
+              <ArrowLeft size={16} aria-hidden />
+              返回
+            </Link>
+            <div className="min-w-0 flex-1">
+              {mode === 'create' ? (
+                <SaveStatus
+                  state={autosave.state}
+                  savedAt={autosave.savedAt}
+                  error={autosave.error}
+                  onRetry={autosave.retry}
+                />
+              ) : (
+                <p className="text-xs text-fg-muted">编辑已发布内容不会自动保存,请确认后点击「更新发布」。</p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant={preview ? 'primary' : 'outline'}
+                size="sm"
+                iconLeft={<Eye size={16} />}
+                onClick={() => setPreview((value) => !value)}
+              >
+                {preview ? '继续编辑' : '预览'}
               </Button>
-            ) : null}
-            <Button
-              size="sm"
-              loading={publishing}
-              onClick={() => void publish()}
-              disabled={publishing || images.uploading}
-            >
-              {mode === 'edit' ? '更新发布' : '发布'}
-            </Button>
+              {mode === 'create' ? (
+                <Button variant="secondary" size="sm" onClick={() => void saveDraftNow()} disabled={!hasContent}>
+                  存草稿
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                loading={publishing}
+                onClick={() => void publish()}
+                disabled={publishing || images.uploading}
+              >
+                {mode === 'edit' ? '更新发布' : '发布'}
+              </Button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+        {!preview ? (
+          <div className="mx-auto max-w-[920px] px-4 pb-2 sm:px-6">
+            <EditorToolbar
+              editor={editor}
+              onAddImage={pickFiles}
+              onAddLink={() => {
+                const current = editor?.getAttributes('link')['href'];
+                setLinkUrl(typeof current === 'string' && current.length > 0 ? current : 'https://');
+                setLinkOpen(true);
+              }}
+              className="static shadow-none"
+            />
+          </div>
+        ) : null}
+      </div>
 
       <div className="mx-auto w-full max-w-[920px] flex-1 px-4 py-4 sm:px-6 sm:py-6">
         {preview ? (
@@ -320,19 +346,6 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
           </div>
         ) : (
           <>
-            {!preview ? (
-              <EditorToolbar
-                editor={editor}
-                onAddImage={pickFiles}
-                onAddLink={() => {
-                  const current = editor?.getAttributes('link')['href'];
-                  setLinkUrl(typeof current === 'string' && current.length > 0 ? current : 'https://');
-                  setLinkOpen(true);
-                }}
-                className="mb-4"
-              />
-            ) : null}
-
             <div className="june-editor-paper mx-auto max-w-[860px] rounded-xl border border-border-default shadow-sm">
               <div className="border-b border-border-default px-6 py-5 sm:px-12 sm:py-8">
                 <input
@@ -351,6 +364,34 @@ export function PostEditor(props: PostEditorProps): React.JSX.Element {
                 <p className="mt-1 text-xs text-fg-subtle">
                   <CharCounter value={title} max={POST_TITLE_MAX} />
                 </p>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="帖子分类">
+                  <span className="text-xs text-fg-muted">分类</span>
+                  {POST_CATEGORIES.map((value) => {
+                    const active = category === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setCategory(value)}
+                        className={cn(
+                          'rounded-full px-2.5 py-1 text-xs transition-colors',
+                          active
+                            ? 'bg-accent text-accent-fg'
+                            : 'bg-surface-hover text-fg-muted hover:text-fg',
+                        )}
+                      >
+                        {POST_CATEGORY_LABELS[value]}
+                      </button>
+                    );
+                  })}
+                </div>
+                {fieldErrors.category ? (
+                  <p role="alert" className="mt-1 text-xs text-state-danger-fg">
+                    {fieldErrors.category}
+                  </p>
+                ) : null}
               </div>
 
               <div className="px-6 py-6 sm:px-12 sm:py-10">

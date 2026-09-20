@@ -23,6 +23,7 @@ export interface ShopListParams {
   q?: string;
   type?: 'ALL' | 'MAIN' | 'SUB';
   status?: 'ALL' | 'ACTIVE' | 'PAUSED' | 'CLOSED';
+  platform?: string;
   parentId?: string;
 }
 
@@ -37,6 +38,7 @@ export function useShopList(params: ShopListParams) {
           q: params.q || undefined,
           type: params.type ?? 'ALL',
           status: params.status ?? 'ALL',
+          platform: params.platform || undefined,
           parentId: params.parentId,
         },
       }),

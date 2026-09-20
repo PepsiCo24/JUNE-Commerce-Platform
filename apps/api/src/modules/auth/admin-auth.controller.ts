@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SessionScope } from '@june/db';
-import { adminLoginSchema, CSRF_COOKIE, type AuthStateResponse, type SessionUser } from '@june/shared';
+import { adminLoginSchema, type AuthStateResponse, type SessionUser } from '@june/shared';
 import type { Response } from 'express';
 import type { z } from 'zod';
 
@@ -10,6 +10,7 @@ import { ClientInfo, CurrentUser, Public, SkipCsrf } from '../../common/auth/aut
 import { zodBody } from '../../common/validation/zod-body.pipe';
 import { loadEnv } from '../../config/env';
 import { AuthService } from './auth.service';
+import { SessionService } from './session.service';
 
 type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 
@@ -28,7 +29,10 @@ const authThrottle = {
  */
 @Controller('admin/auth')
 export class AdminAuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly sessions: SessionService,
+  ) {}
 
   @Public()
   @SkipCsrf()
@@ -45,10 +49,20 @@ export class AdminAuthController {
 
   @Public()
   @Get('me')
-  async me(@Req() req: AuthenticatedRequest): Promise<AuthStateResponse> {
+  async me(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthStateResponse> {
     const user = req.authUser;
-    if (!user) return { user: null, csrfToken: null };
-    const csrfToken = (req.cookies as Record<string, string> | undefined)?.[CSRF_COOKIE] ?? null;
+    const sessionToken = req.authSession?.token;
+    if (!user || !sessionToken) return { user: null, csrfToken: null };
+
+    // 每次 /me 刷新管理站 CSRF,自愈「站点 CSRF 覆盖」或部署后 Cookie 名变更
+    const csrfToken = this.sessions.refreshCsrfCookie({
+      scope: SessionScope.ADMIN,
+      sessionToken,
+      response: res,
+    });
     return { user: await this.auth.buildSessionUser(user.id), csrfToken };
   }
 

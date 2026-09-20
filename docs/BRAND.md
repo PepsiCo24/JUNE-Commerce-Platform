@@ -1,290 +1,44 @@
 # JUNE 品牌视觉规范
 
-> 几何与配色已按官方品牌设计稿校准(左 J 左向弯钩 + 右 E 三横 + 紫色连接珠;
-> app icon / favicon 为深底象牙白单色 JE)。
-> 源文件在 `packages/brand/`,经 `apps/web/scripts/sync-brand-assets.mjs` 同步到 `public/brand`。
+系统 Logo 按用户提供的 JUNE 品牌图重绘为 SVG。图形采用平面填色保留参考稿的轮廓和配色，不包含展示海报的背景纹理。
 
----
+## 图形与配色
 
-## 1. 品牌含义
+- JE 图标：独立的 J 竖笔、向左延伸的大弯钩，以及三段分离的 E 横条。上横和下横的右侧向下收圆，中横较短。
+- 紫色交叠位于 J 竖笔右下侧，处于弯钩内侧。单色图标去掉紫色部分，保留笔画间隙。
+- JUNE 字标：四个字母采用固定矢量轮廓，JUN 使用主色，E 使用青绿；不依赖系统字体。
+- 深底主色为象牙白，浅底主色为深靛蓝。彩色 Logo 的 E 均使用品牌青绿，按参考图呈现。正文、链接和交互控件的对比度规则仍由设计系统管理。
+- 浏览器和应用图标使用深靛蓝底、象牙白单色 JE，对应参考图右下角版本。
+- 副标为 `COMMERCE PLATFORM`，用系统无衬线字体和固定文字宽度对齐字标。不添加口号。
 
-| 项         | 值                       | 说明                |
-| ---------- | ------------------------ | ------------------- |
-| 完整项目名 | `JUNE-Commerce-Platform` | 拼写不可更改        |
-| 品牌简称   | `JUNE`                   | 字标只写这四个字母  |
-| Logo 副标  | `COMMERCE PLATFORM`      | 全大写,拼写不可更改 |
+色值沿用 `packages/shared/src/brand.ts`：深靛蓝 `indigo[900]`、象牙白 `ivory[50]`、青绿 `teal[400]`、紫色 `purple[400]`（深底）或 `purple[500]`（浅底）。
 
-**JUNE = JUN + E**
+## 唯一来源
 
-- `JUN` 代表创始人「俊哥」,在字标里取**象牙白**(深色背景)或**深靛蓝**(浅色背景)。
-- `E` 承接 **E-Commerce**,单独取**青绿**,这是整个标识里唯一的换色点,也是 JUN＋E 这个拆解成立的视觉依据。
+`packages/brand/src/geometry.ts` 保存 JE 和 JUNE 的路径与版式参数。`BrandLogo.tsx` 是页面的统一渲染入口，静态 SVG 由同一组件生成，避免资源与页面各画一套。
 
-**不得在标识周围附加任何口号 / slogan / tagline。** 项目没有口号,任何自行添加的宣传语都属于越权。
+| 版式       | viewBox    | 用途                                              |
+| ---------- | ---------- | ------------------------------------------------- |
+| icon       | 360 × 360  | 独立图标，图形在正方形中垂直居中                  |
+| horizontal | 1242 × 272 | JE + JUNE，无副标，用于导航栏                     |
+| full       | 1242 × 272 | JE + JUNE + COMMERCE PLATFORM，用于登录等品牌展示 |
 
-### 图标的几何构成
+`size` 表示渲染高度，宽度按比例计算。保留 `theme="dark" / "light" / "mono"`、`showSubtitle`、`title`、`aria-label`、`className`、`style` 和 `data-testid` 接口。`mono` 跟随 `currentColor`。未提供无障碍名称时作为装饰图形。
 
-图标是 **J 与 E 融合的几何图形**,画在 64×64 栅格上。
+小尺寸图标沿用相同轮廓，保证品牌形态一致。`icon-simplified.svg` 保留为旧资产路径的兼容别名。使用容器间距保留 Logo 周围留白，不拉伸图形。
 
-- **J(主色)在左**:竖笔 `x=20` + 圆心 `(20,36)`、半径 16 的**左向四分之一弧**,落点 `(8,52)`。造型与字标 J 同构。
-- **E(青绿)在右**:三道独立横画(上 `y=12` / 中 `y=31` / 下 `y=51`),**无竖脊**——竖脊由左侧 J 承担。
-- **紫色连接珠**:`r=6`,位于 `(26,42)`,压在 J 弯钩内侧转折处;仅彩色版绘制。设计稿中的 mono / app icon **不画**连接珠。
-
-紫色**只**出现在这一个点上。不得把紫色用作背景、主按钮、大面积填充或第二主色。
-
----
-
-## 2. 资产清单
-
-所有源文件都是**手写 SVG**:格式化良好、带注释、viewBox 规整、不含位图、不含 base64、不含外链。
-
-### 2.1 核心标识 `packages/brand/assets/`
-
-| 文件                             | viewBox | 用途                                        |
-| -------------------------------- | ------- | ------------------------------------------- |
-| `icon.svg`                       | 64×64   | 独立图标,完整细节版。浅色背景默认配色       |
-| `icon-simplified.svg`            | 64×64   | 小尺寸简化版,用于 16 / 24 / 32 px           |
-| `icon-mono.svg`                  | 64×64   | 单色版,全部 `currentColor`,可在任意背景着色 |
-| `wordmark.svg`                   | 234×96  | 仅 `JUNE` 字标,JUN 与 E 分色                |
-| `lockup-horizontal.svg`          | 400×144 | 横向组合标(图标 ＋ JUNE)                    |
-| `lockup-full.svg`                | 400×156 | 完整组合标(＋ COMMERCE PLATFORM 副标)       |
-| `lockup-horizontal-dark-bg.svg`  | 400×144 | 深背景版,自带深靛蓝底                       |
-| `lockup-horizontal-light-bg.svg` | 400×144 | 浅背景版,自带象牙白底                       |
-| `lockup-full-mono.svg`           | 400×156 | 完整组合标的单色版                          |
-
-字标 `JUNE` 是**定制图形**:四个字母各由手写 `path` 描边构成(大写字高 56、笔画宽 12、圆头圆角、曲线全部是正圆四分之一弧)。
-**项目不提供也不需要字体文件**,字标不依赖任何字体。副标 `COMMERCE PLATFORM` 是 `<text>` 元素,用 `textLength=234` 锁死成与字标等宽,因此换任何系统字体宽度都不变;需要绝对一致的印刷输出时,请先把 `<text>` 转成轮廓路径。
-
-### 2.2 图标文件 `packages/brand/assets/icons/`
-
-| 文件                   | 尺寸    | 用途与要点                                                                                                                                             |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `favicon.svg`          | 64×64   | 矢量主 favicon。带不透明深靛蓝圆角底板(`rx=14`),浅色/深色标签栏都可读;内部用简化版几何,图形 ×0.75 居中,四周留 14 单位安全边距                          |
-| `favicon-16.svg`       | 16×16   | 按 16px 像素网格**重新绘制**,直笔画全部用整数坐标 `<rect>`,笔画宽 2px,墨迹 3..13                                                                       |
-| `favicon-32.svg`       | 32×32   | 16 档的精确 2 倍,笔画宽 4px,墨迹 6..26                                                                                                                 |
-| `apple-touch-icon.svg` | 180×180 | **不透明**深靛蓝满幅底 + 青绿图形。不做圆角(交给 iOS 遮罩),图形 108×108 居中,四周安全边距 36(20%)                                                      |
-| `app-icon-192.svg`     | 192×192 | PWA `maskable`。图形外接圆半径 ≈67.9 < 安全圆半径 76.8                                                                                                 |
-| `app-icon-512.svg`     | 512×512 | PWA `maskable`。图形外接圆半径 ≈178.2 < 安全圆半径 204.8                                                                                               |
-| `manifest.webmanifest` | —       | `name=JUNE-Commerce-Platform`、`short_name=JUNE`、`theme_color=#101426`、`background_color=#101426`,icons 数组含 `purpose: any` 与 `purpose: maskable` |
-
-**maskable 安全区**:Android / Chrome 会用任意形状裁切应用图标,规范只保证**居中直径 80% 的圆形**内不被裁掉。两档 app icon 的图形都控制在该圆内,底板满幅不透明,裁切后不会出现透明角。
-
-### 2.3 组件 `packages/brand/src/`
-
-| 文件            | 说明                                                 |
-| --------------- | ---------------------------------------------------- |
-| `BrandLogo.tsx` | 唯一的 Logo 渲染入口(React 19 + TypeScript,内联 SVG) |
-| `index.ts`      | 包出口                                               |
-
-### 2.4 脚本 `packages/brand/scripts/`
-
-| 文件                   | 说明                                                                       |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `generate-rasters.mjs` | 用 sharp 把 SVG 栅格化成 16 / 32 / 180 / 192 / 512 的 PNG 与 `favicon.ico` |
-
----
-
-## 3. 配色与对比度
-
-色值**全部**来自 `packages/shared/src/brand.ts`,这是唯一来源。品牌资产不得另起色值。
-
-| 角色     | 令牌                       | 色值      |
-| -------- | -------------------------- | --------- |
-| 深靛蓝   | `COLOR_SCALES.indigo[900]` | `#101426` |
-| 品牌青绿 | `COLOR_SCALES.teal[400]`   | `#56DECD` |
-| 象牙白   | `COLOR_SCALES.ivory[50]`   | `#F8F6EF` |
-| 辅助紫   | `COLOR_SCALES.purple[400]` | `#9B8AFB` |
-| 浅底青绿 | `COLOR_SCALES.teal[700]`   | `#0C7E72` |
-| 浅底紫   | `COLOR_SCALES.purple[500]` | `#7B65F7` |
-
-### 3.1 对比度事实
-
-以下数值来自 `shared/brand.ts` 中已登记的实测值,以及按 WCAG 相对亮度公式对同一组色值的补算:
-
-| 前景                    | 背景             | 对比度     | 结论                                    |
-| ----------------------- | ---------------- | ---------- | --------------------------------------- |
-| `#F8F6EF` 象牙白        | `#101426` 深靛蓝 | **17.1:1** | 深底主文字 / JUN 字标                   |
-| `#56DECD` 品牌青绿      | `#101426` 深靛蓝 | **11.3:1** | 深底可放心使用品牌色本体                |
-| `#9B8AFB` 辅助紫        | `#101426` 深靛蓝 | **6.5:1**  | 深底连接珠                              |
-| `#101426` 深靛蓝        | `#FFFFFF` 白     | ≈ 16.9:1   | 浅底 JUN 字标                           |
-| **`#56DECD` 品牌青绿**  | **`#FFFFFF` 白** | **1.6:1**  | ❌ **不可用**,连图形最低的 3:1 都达不到 |
-| **`#0C7E72` teal[700]** | **`#FFFFFF` 白** | **4.95:1** | ✅ 浅底小字号 / 小尺寸的唯一合规青绿    |
-| `#0C7E72` teal[700]     | `#F8F6EF` 象牙白 | ≈ 4.59:1   | ✅ 仍满足正文 4.5:1                     |
-| `#9B8AFB` 辅助紫        | `#FFFFFF` 白     | ≈ 2.8:1    | ❌ 低于图形元素 3:1                     |
-| `#7B65F7` purple[500]   | `#FFFFFF` 白     | ≈ 4.2:1    | ✅ 浅底连接珠                           |
-
-### 3.2 硬性规则
-
-1. **浅色背景上的小字号、小尺寸标识,青绿一律用 `COLOR_SCALES.teal[700]` = `#0C7E72`。** 品牌青绿 `#56DECD` 在白底只有 1.6:1,当作字形笔画会直接读不清。
-   - 受此约束的资产:`icon.svg`、`icon-simplified.svg`、`wordmark.svg`、`lockup-horizontal.svg`、`lockup-full.svg`、`lockup-horizontal-light-bg.svg`,以及 `BrandLogo` 的 `theme="light"`。
-   - `icon-mono.svg` / `lockup-full-mono.svg` 放在浅底时,`color` 也必须取 `#0C7E72` 或更深。
-2. **浅色背景上的紫色点缀用 `purple[500]` `#7B65F7`**,不用 `#9B8AFB`(白底仅 ≈2.8:1)。
-3. **只有深色背景(明度接近 `#101426`)才允许使用品牌青绿本体 `#56DECD`。**
-4. 紫色**只**用于 J 与 E 的连接珠,不得扩大用途。
-
----
-
-## 4. 留白规则(clear space)
-
-> **最小留白 = 图标高度 × 0.5**
-
-- 在 400×144 的横向组合标里,图标墨迹高 72,因此留白 = **36 单位**,已经**内建在每个 lockup 文件的 viewBox 四周**。
-- 使用时把整个 SVG 当作一个**不可侵入的矩形**:留白区内不得叠加任何文字、线条、图形、边框,也不得被容器裁切掉以「贴合」旁边的文案。
-- 如果不用现成的 lockup、而是在版面里自行排布图标与字标,请按同一条规则(图标高度的一半)向四周预留空白。
-- `BrandLogo` 组件使用的是**紧凑 viewBox**(不含内建留白),因为组件的外部间距应该由布局系统控制;这种情况下请用 `margin` / `padding` / `gap` 保证同等留白。
-
----
-
-## 5. 16 / 24 / 32 px 辨识度检查
-
-检查方法:把完整版与简化版在浅色背景上按 16 / 20 / 24 / 32 / 48 / 160 px 并排渲染,逐档目视比对。
-
-### 5.1 结论
-
-| 渲染高度 | 用哪一版            | 结论                                                                               |
-| -------- | ------------------- | ---------------------------------------------------------------------------------- |
-| ≤ 32 px  | **简化版**          | 三道横画各留约 2.25 px 白间隙,E 的结构仍可辨;J 的弧线是主要识别锚点                |
-| 33 px 起 | **完整版**          | 中横、下横缺口、连接珠全部清晰                                                     |
-| 16 px    | 简化版 / favicon-16 | 已到极限。优先保证「左侧横向层叠 + 右下弧形收口」这个轮廓印象,细节不再承担识别功能 |
-
-切换阈值由 `shared/brand.ts` 的 `LOGO_SIMPLIFY_THRESHOLD = 32` 统一控制,`BrandLogo` 会自动切换,调用方不需要关心。
-
-### 5.2 简化版做了哪些取舍
-
-| 项       | 完整版                    | 简化版                             | 原因                                               |
-| -------- | ------------------------- | ---------------------------------- | -------------------------------------------------- |
-| 笔画宽   | 8                         | **10**                             | 16px 下每道笔画约 2.5 实际像素,不会被抗锯齿吃掉    |
-| 中横     | `x=12..30`                | **缩短为 `x=13..28`**              | 与上下横拉开等距的 9 单位白间隙,避免三道横并成灰块 |
-| 下横缺口 | 4 单位                    | **收到 3 单位**                    | 加粗后的笔端不至于把缺口吞掉                       |
-| 连接珠   | `(28,51) r=5`,外凸 1 单位 | `(26,51) r=5`,**正好内接于笔画带** | 小尺寸下边缘更干净,不产生毛刺                      |
-| 墨迹外框 | `8..56`                   | `8..56`(相同)                      | 两版可原地互换,切换时图形不跳动                    |
-
-### 5.3 ⚠ 与书面要求的一处偏离,请复核
-
-原始要求是简化版「**去掉最细的笔画 / 中间横线**」。实际执行时做了不同的处理,理由如下,**请在校准时确认是否接受**:
-
-1. 本图标是**等线设计**,所有笔画同宽(完整版 8 / 简化版 10),**并不存在一条「最细的笔画」**。
-2. 实测把中横整条删掉之后,图标在 24 / 32 px 下退化成「圆角方块 + 右下角缺口」,**E 完全消失**,辨识度**低于**保留中横的版本 —— 这与简化版的目的正好相反。
-3. 真正先在小尺寸下崩掉的细节是**下横的缺口**与**连接珠**,不是中横。
-
-因此「减少细节」被落实为:**缩短中横 + 加粗主体 + 收窄缺口 + 让连接珠内接**。
-如果希望严格按原要求执行,只需删掉 `icon-simplified.svg` 里的 `<path stroke="#0C7E72" d="M13 32 H28" />` 一行,并同步删掉 `BrandLogo.tsx` 中 `ICON_SIMPLIFIED.accentPaths` 的第二项,其余几何无需改动。
-
-`favicon-16.svg` / `favicon-32.svg` 同样保留了中横,并把它对齐到像素网格:三道横画各占 2 行(16 档)或 4 行(32 档)像素,之间各留等宽空白,正好填满墨迹区,行行对齐,没有任何半像素。
-
----
-
-## 6. 禁止事项
-
-1. **禁止拉伸 / 变形。** 一律等比缩放。所有资产都带 `preserveAspectRatio="xMidYMid meet"`,`BrandLogo` 只接受高度、宽度由比例推导。
-2. **禁止任意改色。** 只能使用本文档第 3 节列出的组合。不得调换 JUN 与 E 的配色,不得给单色版局部上色,不得加渐变、描边、阴影、发光。
-3. **禁止把品牌展示图当 Logo。** 任何「品牌页 / 展示板 / 规范图 / 配色卡」整张图都不是 Logo,只能从 `packages/brand/assets/` 取用独立资产。
-4. **禁止用截图裁切当资产。** 不得对渲染结果截屏再裁剪。需要位图请跑 `generate-rasters.mjs`。
-5. **禁止各页面自己拼 Logo。** 所有页面的 Logo 必须来自 `BrandLogo` 组件。不得自行写 `<svg>`,不得用 `<img>` 引 SVG(会失去主题着色能力)。
-6. **禁止改动拼写与文案。** `JUNE-Commerce-Platform` / `JUNE` / `COMMERCE PLATFORM` 三处拼写固定。
-7. **禁止添加任何口号 / slogan。**
-8. **禁止侵占留白。** 见第 4 节。
-9. **禁止扩大紫色的使用面积。** 紫色只用于 J 与 E 的连接珠。
-10. **禁止旋转、倾斜、镜像、加边框、放进未经批准的形状容器里。**
-
----
-
-## 7. `BrandLogo` 用法
-
-```ts
-import { BrandLogo } from "@june/brand";
-```
-
-组件是**纯展示、无副作用**的:没有 state、没有 hooks、没有事件,因此**可以直接在 React Server Component 中渲染**,不需要 `'use client'`。
-
-### 7.1 Props
-
-| Prop           | 类型                                              | 默认值         | 说明                                                                                                                            |
-| -------------- | ------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `variant`      | `'icon' \| 'horizontal' \| 'full'`                | `'horizontal'` | 版式                                                                                                                            |
-| `theme`        | `'dark' \| 'light' \| 'mono'`                     | `'dark'`       | `dark`=深底(象牙白＋青绿);`light`=浅底(深靛蓝＋`#0C7E72`);`mono`=全部 `currentColor`                                            |
-| `size`         | `'xs'\|'sm'\|'md'\|'lg'\|'xl'\|'2xl'` 或 `number` | `'md'`         | **渲染高度(px)**。档位值来自 `LOGO_SIZES`:16 / 24 / 32 / 48 / 72 / 112                                                          |
-| `showSubtitle` | `boolean`                                         | 跟随 `variant` | 是否显示 `COMMERCE PLATFORM`。显式传 `true` 会把 `horizontal` 提升为完整版式,传 `false` 会把 `full` 降为横向版式;对 `icon` 无效 |
-| `title`        | `string`                                          | —              | SVG `<title>`,同时作为无障碍名称与悬停提示                                                                                      |
-| `aria-label`   | `string`                                          | —              | 无障碍名称。与 `title` 都不传时,组件按**装饰性图形**处理,自动加 `aria-hidden` + `role="presentation"`                           |
-| `className`    | `string`                                          | —              |                                                                                                                                 |
-| `style`        | `CSSProperties`                                   | —              | 会与组件自带的 `display:block; flex-shrink:0` 合并                                                                              |
-| `data-testid`  | `string`                                          | —              |                                                                                                                                 |
-
-### 7.2 示例
-
-```tsx
-// 深色导航栏:横向标识,带无障碍名称
-<BrandLogo variant="horizontal" theme="dark" size="lg" title="JUNE 首页" />
-
-// 浅色社区页:完整标识。light 主题会自动把青绿降到 #0C7E72
-<BrandLogo variant="full" theme="light" size={64} />
-
-// 登录页主视觉:显式给像素高度
-<BrandLogo variant="full" theme="dark" size="2xl" aria-label="JUNE COMMERCE PLATFORM" />
-
-// 列表项前缀:装饰性用途,不传 title / aria-label
-// → 自动 aria-hidden + role="presentation",并自动切到简化图形(16 ≤ 32)
-<BrandLogo variant="icon" theme="light" size="xs" />
-
-// 跟随文字颜色:mono 主题吃父元素的 CSS color
-<span style={{ color: 'var(--text-muted)' }}>
-  <BrandLogo variant="icon" theme="mono" size="sm" />
-</span>
-
-// 侧栏折叠态:只要图标,展开态换成 horizontal
-<BrandLogo variant={collapsed ? 'icon' : 'horizontal'} theme="dark" size="md" title="JUNE" />
-```
-
-### 7.3 行为保证
-
-- **自动简化**:渲染高度 ≤ `LOGO_SIMPLIFY_THRESHOLD`(32)时自动切换到简化图形。`variant='icon'` / `'horizontal'` 下图标栅格铺满整个高度,该判据就等于渲染高度本身;`variant='full'` 下图标只占画布高度的 `96/124`,按实际占比折算,判断更准确。
-- **保持宽高比**:`size` 是高度,宽度由 viewBox 比例推导(`icon` 1:1、`horizontal` 348:96、`full` 348:124),并带 `preserveAspectRatio="xMidYMid meet"`,外层容器给了不成比例的尺寸也只会居中留白,不会变形。自带 `flex-shrink: 0`,不会被 flex 容器压扁。
-- **常量单一来源**:`BRAND_SHORT_NAME`、`BRAND_LOGO_SUBTITLE`、`LOGO_SIZES`、`LOGO_SIMPLIFY_THRESHOLD`、`COLOR_SCALES`、`FONT_STACKS` 全部从 `@june/shared` 导入,组件内不硬编码任何色值或文案。
-
----
-
-## 8. 位图生成
+## 静态资源与生成
 
 ```bash
-# 默认输出到 packages/brand/assets/icons/
-node packages/brand/scripts/generate-rasters.mjs
-
-# 输出到某个应用的 public 目录
-node packages/brand/scripts/generate-rasters.mjs --out apps/web/public/icons
-
-# 只列出将要生成的文件,不写盘
-node packages/brand/scripts/generate-rasters.mjs --dry-run
+pnpm brand:icons
 ```
 
-产物:`favicon-16.png`、`favicon-32.png`、`apple-touch-icon.png`(180,已 flatten 成不透明)、`app-icon-192.png`、`app-icon-512.png`、`favicon.ico`(内嵌 16 / 32 / 48)。
+该命令依次编译共享令牌和品牌组件、生成 SVG、生成 PNG，并同步到 `apps/web/public/brand`。
 
-**依赖是可选的,脚本不会因为缺依赖而崩溃:**
+- `packages/brand/scripts/generate-vectors.mjs`：从组件和路径生成彩色、单色、深浅底组合标，以及 16 / 32 / 64 / 180 / 192 / 512 图标。
+- `packages/brand/scripts/generate-rasters.mjs`：使用 sharp 生成 PNG；可复用 web 应用中 Next.js 的 sharp。安装了可选 `png-to-ico` 时同时生成 ICO。
+- `apps/web/scripts/sync-brand-assets.mjs`：将源资产同步到 web 的 public 目录，dev / build 前也会执行。
+- `manifest.webmanifest`：所有图标引用 `/brand/icons/`；应用图标底色不透明，JE 位于 maskable 安全区域内。
+- Apple Touch Icon 使用 180 × 180 PNG，浏览器优先使用 SVG favicon。
 
-- 缺 `sharp` → 打印安装指引并以退出码 0 结束,不阻塞上层构建。
-- 缺 `png-to-ico` → PNG 照常生成,只跳过 `.ico` 并给出提示(sharp 本身不支持写 `.ico` 容器)。
-- `sharp` 装了但原生二进制加载失败 → 打印一行可读错误与 `rebuild` 指引,不抛堆栈。
-
-```bash
-pnpm --filter @june/brand add -D sharp png-to-ico
-```
-
-`sharp` 含原生二进制,已在 `pnpm-workspace.yaml` 的 `allowBuilds` 中放行。
-
-脚本是**一对一栅格化**而不是「从一张大图缩小」:16 / 32 档走像素栅格专版,180 / 192 / 512 档走完整细节版,并按目标尺寸抬高 `density` 让矢量一次性渲染到位,避免多余的重采样。
-
----
-
-## 待校准项
-
-拿到用户的品牌设计图后,需要逐项对照确认:
-
-1. **图标的几何构成** —— J 与 E 的融合方式(当前:E 的上横向右延伸换色成 J 的竖笔)、弧线半径与落点、下横缺口的宽度。
-2. **紫色点缀的形态与位置** —— 当前是缺口上的一颗 `r=5` 实心圆珠。设计图里可能是线段、切角、渐隐或别的形态。
-3. **字标 `JUNE` 的字形** —— 当前是等线几何无衬线(大写字高 56、笔画宽 12、圆头、曲线全为正圆四分之一弧)。字重、字宽、字间距、圆角量、J 的钩深、U 的碗形、N 的斜笔角度都需要对照。
-4. **JUN / E 的具体色值分配** —— 规则已明确(JUN 象牙白或深靛蓝、E 青绿),但深浅底各用哪一档需要确认。
-5. **副标的字体与字距** —— 当前是系统字体栈 + `textLength` 锁宽。设计图若指定了具体字体,需要替换并考虑是否转成轮廓。
-6. **简化版是否保留中横** —— 见 [5.3](#53--与书面要求的一处偏离请复核)。
-7. **图标与字标的相对大小与间距** —— 当前图标墨迹 72、字标大写字高 56、间距 22。
-8. **应用图标是否使用单色青绿** —— `apple-touch-icon` / `app-icon-*` 当前是「深靛蓝底 + 单色青绿图形 + 紫色节点」,没有沿用主图标的双色。
-9. **留白倍数** —— 当前 0.5×图标高度。
-10. **是否需要竖向(图标在上、字标在下)组合标** —— 本次未要求,尚未制作。
+修改路径或配色后重新运行生成命令，不直接编辑 `apps/web/public/brand` 中的副本。

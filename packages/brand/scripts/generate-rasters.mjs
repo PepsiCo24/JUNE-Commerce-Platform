@@ -2,8 +2,7 @@
 /**
  * JUNE 品牌位图生成脚本:把 assets/icons/ 下的 SVG 栅格化成 PNG 与 favicon.ico。
  *
- * ⚠ 待对照用户提供的品牌设计图校准(当前 SVG 为按书面规则制作的初稿),
- *   校准后需要重新运行本脚本覆盖所有位图。
+ * SVG 由 generate-vectors.mjs 从统一品牌组件生成。
  *
  * 用法:
  *   node packages/brand/scripts/generate-rasters.mjs
@@ -18,6 +17,7 @@
  */
 
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -112,7 +112,16 @@ async function loadSharp() {
     const mod = await import('sharp');
     return mod.default ?? mod;
   } catch (error) {
-    if (isModuleNotFound(error, 'sharp')) return null;
+    if (isModuleNotFound(error, 'sharp')) {
+      // Reuse Next.js's installed image runtime in the application workspace.
+      try {
+        const webRequire = createRequire(resolve(PACKAGE_ROOT, '../../apps/web/package.json'));
+        const nextRequire = createRequire(webRequire.resolve('next/package.json'));
+        return nextRequire('sharp');
+      } catch {
+        return null;
+      }
+    }
     // sharp 装了但原生二进制加载失败(常见于跨平台复制 node_modules):
     // 这属于环境问题,同样给出可读提示而不是抛栈。
     console.error('\n  sharp 已安装但加载失败,原始错误:');

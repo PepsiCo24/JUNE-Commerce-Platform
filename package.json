@@ -26,7 +26,7 @@
     "db:studio": "pnpm --filter @june/db studio",
     "db:reset": "pnpm --filter @june/db reset",
     "admin:init": "pnpm --filter @june/db admin:init",
-    "brand:icons": "node scripts/generate-brand-rasters.mjs",
+    "brand:icons": "pnpm --filter @june/shared build && pnpm --filter @june/brand build && node packages/brand/scripts/generate-vectors.mjs && node packages/brand/scripts/generate-rasters.mjs && pnpm --filter @june/web brand:sync",
     "loadtest:seed": "pnpm --filter @june/db loadtest:seed",
     "clean": "pnpm -r exec rm -rf dist .next node_modules/.cache && rm -rf node_modules"
   },

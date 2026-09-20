@@ -1,18 +1,1 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-  JUNE favicon — 32×32(16 档精确 2 倍)
--->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"
-     preserveAspectRatio="xMidYMid meet" role="img" aria-label="JUNE">
-  <title>JUNE</title>
-
-  <rect x="0" y="0" width="32" height="32" rx="6" ry="6" fill="#101426" />
-
-  <g fill="#F8F6EF">
-    <rect x="6" y="6" width="4" height="16" />
-    <rect x="12" y="6" width="14" height="4" />
-    <rect x="14" y="14" width="10" height="4" />
-    <rect x="12" y="22" width="14" height="4" />
-  </g>
-  <path d="M8 22 A6 6 0 0 1 4 26" fill="none" stroke="#F8F6EF" stroke-width="4" stroke-linecap="round" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="JUNE"><rect width="32" height="32" rx="6.72" fill="#101426"/><g transform="translate(4.8 4.8)" color="#F4F0E9"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="22.4" height="22.4" preserveAspectRatio="xMidYMid meet" focusable="false" style="display:block;flex-shrink:0" role="img" aria-label="JUNE Commerce Platform"><title>JUNE Commerce Platform</title><g transform="translate(1 44)"><path d="M174 0H358V7C358 35 342 53 314 53H174Z" fill="currentColor"></path><path d="M225 86H323Q330 86 330 93V129Q330 140 319 140H225Q218 140 218 133V93Q218 86 225 86Z" fill="currentColor"></path><path d="M218 182H358C358 220 333 247 299 247H194C210 229 218 207 218 182Z" fill="currentColor"></path><path d="M155 0H164V181C164 201 156 212 137 216C122 213 111 203 111 187V44C111 20 130 0 155 0Z" fill="currentColor"></path><path d="M0 154H52C52 190 79 220 115 220C157 220 192 200 205 177C216 204 197 237 171 254C153 266 134 272 114 272C51 272 0 219 0 154Z" fill="currentColor"></path></g></svg></g></svg>

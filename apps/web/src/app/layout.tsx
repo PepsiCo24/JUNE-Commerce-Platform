@@ -31,7 +31,7 @@ export const metadata: Metadata = {
       { url: '/brand/icons/favicon-32.svg', type: 'image/svg+xml', sizes: '32x32' },
       { url: '/brand/icons/favicon-16.svg', type: 'image/svg+xml', sizes: '16x16' },
     ],
-    apple: [{ url: '/brand/icons/apple-touch-icon.svg' }],
+    apple: [{ url: '/brand/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   manifest: '/brand/icons/manifest.webmanifest',
   formatDetection: { telephone: false, email: false, address: false },

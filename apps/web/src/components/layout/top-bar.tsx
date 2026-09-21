@@ -16,10 +16,10 @@ import { MAIN_NAV, isActivePath } from './navigation';
 import { UserMenu } from './user-menu';
 
 /**
- * 应用顶栏。社区(浅色)与工作台(深色)共用同一个组件。
+ * 应用顶栏。社区与工作台共用同一个组件。
  *
  * 配色不写死:这里只用语义变量类名(bg-bg-elevated / text-fg / border-border-default ...),
- * 实际取值由外层 `AppShell` 按当前路由设置的 `data-theme` 决定,
+ * 实际取值由 ThemeProvider 设置的 `data-theme` 决定,
  * 因此同一份代码在两种场景下都满足对比度要求,不需要两套顶栏。
  */
 export function TopBar({
@@ -41,7 +41,7 @@ export function TopBar({
         <MobileNav theme={theme} />
 
         <Link href="/" className="flex shrink-0 items-center rounded-md" aria-label="返回首页">
-          {/* Logo 的深浅版本跟随场景;所有标识只能来自 BrandLogo */}
+          {/* Logo 的深浅版本跟随当前主题;所有标识只能来自 BrandLogo */}
           <BrandLogo variant="horizontal" theme={theme} size={36} title="返回首页" />
         </Link>
 
@@ -55,7 +55,9 @@ export function TopBar({
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'rounded-md px-3 py-1.5 text-sm transition-colors',
-                  active ? 'bg-accent-surface text-accent' : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
+                  active
+                    ? 'bg-accent-surface text-accent'
+                    : 'text-fg-muted hover:bg-surface-hover hover:text-fg',
                 )}
               >
                 {item.label}

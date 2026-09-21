@@ -42,17 +42,16 @@ ARG NODE_VARIANT=bookworm-slim
 ARG PNPM_VERSION=12.4.2
 
 # ============================================================================
-# base:公共基础层(corepack 锁定 pnpm)
+# base:公共基础层(固定 pnpm 版本)
 # ============================================================================
 FROM node:${NODE_VERSION}-${NODE_VARIANT} AS base
 ARG PNPM_VERSION
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
-    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     CI=true
-# corepack 按 packageManager 字段锁版本;这里显式 prepare 把 pnpm 固化进镜像层,
-# 避免每次构建都去网络取 pnpm(也避免生产机无外网时构建失败)
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# pnpm 12 使用原生入口;Node 22 内置 Corepack 仍寻找旧版 bin/pnpm.cjs。
+# 让 npm 按该版本的 bin 清单安装,与 packageManager 固定版本保持一致。
+RUN npm install --global pnpm@${PNPM_VERSION} && pnpm --version
 WORKDIR /app
 
 # ============================================================================

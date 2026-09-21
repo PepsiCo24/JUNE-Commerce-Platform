@@ -1,0 +1,121 @@
+name: Test, build and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never interrupt a database migration because another commit was pushed.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      - run: pnpm typecheck
+      # shared/worker currently have no tests; all existing suites still run.
+      - run: pnpm -r test --passWithNoTests
+      - name: Deployment guard tests
+        run: python3 -m unittest discover -s deploy/tests -v
+      - name: Shell syntax
+        run: for script in deploy/scripts/*.sh; do bash -n "$script"; done
+
+  images:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      prefix: ${{ steps.image.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Image coordinates
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "prefix=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build all four images (publish main only)
+        uses: docker/bake-action@v6
+        with:
+          files: docker-bake.hcl
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          set: |
+            *.cache-from=type=gha,scope=june-images
+            migrate.cache-to=type=gha,mode=max,scope=june-images
+        env:
+          IMAGE_PREFIX: ${{ steps.image.outputs.prefix }}
+          IMAGE_TAG: ${{ github.sha }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          NEXT_PUBLIC_ASSET_HOST: ${{ vars.NEXT_PUBLIC_ASSET_HOST }}
+      - name: Server setup status
+        if: github.event_name != 'pull_request' && vars.DEPLOY_ENABLED != 'true'
+        run: echo 'Images built. Server deployment is disabled; follow docs/AUTO_DEPLOY.md and set DEPLOY_ENABLED=true after first-server setup.' >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: images
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY" || { echo 'Missing DEPLOY_SSH_KEY'; exit 1; }
+          test -n "$SSH_KNOWN_HOSTS" || { echo 'Missing DEPLOY_KNOWN_HOSTS'; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Update server to this commit
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          COMMIT_SHA: ${{ github.sha }}
+          IMAGE_PREFIX: ${{ needs.images.outputs.prefix }}
+        run: |
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { echo 'Invalid DEPLOY_HOST'; exit 1; }
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || { echo 'Invalid DEPLOY_USER'; exit 1; }
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]] || { echo 'Invalid DEPLOY_PORT'; exit 1; }
+          [[ "$DEPLOY_PATH" =~ ^/[a-zA-Z0-9_./-]+$ && "$DEPLOY_PATH" != / ]] || { echo 'Invalid DEPLOY_PATH'; exit 1; }
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash -s -- '$DEPLOY_PATH' '$COMMIT_SHA' '$IMAGE_PREFIX'" \
+            < deploy/scripts/continuous-deploy.sh
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

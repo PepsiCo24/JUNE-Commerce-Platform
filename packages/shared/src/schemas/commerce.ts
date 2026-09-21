@@ -33,6 +33,10 @@ export const shopBaseFieldsSchema = z.object({
   platform: z.string().trim().max(60).nullable().optional(),
   /** 与店铺名称独立的平台登录用户名 */
   platformAccount: platformAccountSchema,
+  /** 店铺手机号(落库 contactInfo) */
+  phone: z.string().trim().max(40).nullable().optional(),
+  /** 绑定的支付宝账户 id;传 null 表示解除绑定 */
+  alipayAccountId: idSchema.nullable().optional(),
   url: z.url('店铺链接格式不正确').max(500).nullable().optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   contactName: z.string().trim().max(80).nullable().optional(),
@@ -145,8 +149,16 @@ export interface ShopSummary {
 export interface ShopDetail extends ShopSummary {
   description: string | null;
   contactName: string | null;
+  /** 店铺手机号(与 contactInfo 同源) */
+  phone: string | null;
   contactInfo: string | null;
   note: string | null;
+  /** 绑定的支付宝账户(可空) */
+  alipayAccount: {
+    id: string;
+    name: string;
+    phoneMasked: string;
+  } | null;
   /** 可继承字段的继承/覆盖状态 */
   inheritance: ShopFieldInheritance[];
 }
@@ -383,6 +395,8 @@ export interface AlipayAccountDetail extends AlipayAccountSummary {}
 export interface AlipayPhoneRevealResponse {
   id: string;
   phone: string;
+  /** 前端明文展示窗口;到期后必须清除本地 state */
+  expiresInSeconds: number;
 }
 
 export interface AlipayPasswordRevealResponse {

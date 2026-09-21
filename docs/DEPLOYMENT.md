@@ -4,6 +4,8 @@
 
 脚本目录:`deploy/scripts/`。镜像名默认 `june/{api,web,worker}:$JUNE_IMAGE_TAG`。
 
+GitHub 推送后自动发布：见 [自动部署接入说明](AUTO_DEPLOY.md)，复用本文的首次上线、备份和回滚流程。
+
 ## 0. 在开发机或 CI 构建镜像
 
 生产 compose **故意不写 `build:`**,避免在 4C8G 上现场编译 OOM。

@@ -16,15 +16,19 @@ export interface AuditEntry {
   result?: 'success' | 'failure';
 }
 
-/** 绝不允许写入审计日志的字段名 */
+/**
+ * 绝不允许写入审计日志明文的字段名。
+ * 含密码/密钥,以及店铺与支付宝相关的 PII(手机号、平台账号、联系方式等)。
+ * 匹配到时:buildDiff 只记 `{ changed: true }`,redact 记为 `[redacted]`。
+ */
 const FORBIDDEN_FIELDS =
-  /password|passwd|secret|apikey|api_key|token|credential|authorization|cookie|cipher|privatekey/i;
+  /password|passwd|secret|apikey|api_key|token|credential|authorization|cookie|cipher|privatekey|phone|mobile|contactinfo|contactname|platformaccount|account|^note$/i;
 
 /**
  * 审计日志。
  *
- * 硬性约束:日志中**不得出现任何密码或密钥**。即使调用方不小心传入,
- * 这里也会在写库前把这些字段替换为 [redacted],做到最后一道防线。
+ * 硬性约束:日志中**不得出现任何密码、密钥,或店铺/支付宝 PII 明文**。
+ * 即使调用方不小心传入,这里也会在写库前脱敏,做到最后一道防线。
  *
  * 审计写入失败不影响主业务:记录错误日志但不抛出,避免"日志坏了导致功能不可用"。
  */

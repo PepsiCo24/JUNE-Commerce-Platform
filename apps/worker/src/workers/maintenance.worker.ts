@@ -16,7 +16,15 @@
  * **用 providerTaskId 向上游核对结果**后再决定成功/失败,**绝不盲目重试**——
  * 那笔调用可能已经计费了。
  */
-import { AssetStatus, PostStatus, ResultStatus, SessionScope, TaskStatus, type Prisma } from '@june/db';
+import {
+  AssetStatus,
+  PostStatus,
+  ResultStatus,
+  SessionScope,
+  TaskStatus,
+  type Post,
+  type Prisma,
+} from '@june/db';
 import {
   QUEUE_NAMES,
   QUEUE_RETENTION,
@@ -126,7 +134,10 @@ async function handle(job: Job<MaintenanceJob>): Promise<void> {
   }
 }
 
-function dispatch(kind: MaintenanceJobKind, ctx: { dryRun: boolean; limit: number }): Promise<CleanupOutcome> {
+function dispatch(
+  kind: MaintenanceJobKind,
+  ctx: { dryRun: boolean; limit: number },
+): Promise<CleanupOutcome> {
   switch (kind) {
     case 'cleanup_expired_upload':
       return cleanupExpiredUpload(ctx);
@@ -489,7 +500,10 @@ async function recomputeHotScores(ctx: { dryRun: boolean; limit: number }): Prom
   const sample: unknown[] = [];
 
   for (;;) {
-    const posts = await prisma.post.findMany({
+    const posts: Pick<
+      Post,
+      'id' | 'likeCount' | 'commentCount' | 'viewCount' | 'publishedAt' | 'hotScore'
+    >[] = await prisma.post.findMany({
       where: { status: PostStatus.PUBLISHED, deletedAt: null, publishedAt: { not: null } },
       select: {
         id: true,
@@ -535,9 +549,7 @@ async function recomputeHotScores(ctx: { dryRun: boolean; limit: number }): Prom
     if (!ctx.dryRun && updates.length > 0) {
       // 分批事务:一批 500 条,避免长事务锁住整张 posts 表
       await prisma.$transaction(
-        updates.map((u) =>
-          prisma.post.update({ where: { id: u.id }, data: { hotScore: u.hotScore } }),
-        ),
+        updates.map((u) => prisma.post.update({ where: { id: u.id }, data: { hotScore: u.hotScore } })),
       );
       affected += updates.length;
     }
@@ -582,7 +594,8 @@ async function reconcileUnknownTasks(ctx: { dryRun: boolean; limit: number }): P
 
     if (!providerTaskId) {
       sample.push({ taskId: task.id, action: 'keep_unknown', reason: '没有 providerTaskId,无从核对' });
-      if (!ctx.dryRun) await bumpReconcileAttempt(task.id, '没有上游任务号,无法自动核对,请按供应商账单人工确认');
+      if (!ctx.dryRun)
+        await bumpReconcileAttempt(task.id, '没有上游任务号,无法自动核对,请按供应商账单人工确认');
       continue;
     }
 
@@ -609,7 +622,10 @@ async function reconcileUnknownTasks(ctx: { dryRun: boolean; limit: number }): P
 
       if (outcome.kind === 'completed') {
         // 补录:上游确实出图了(而且已经计费),必须把图收下来交付用户
-        const pendingSeqs = task.results.filter((r) => r.status === ResultStatus.PENDING).map((r) => r.seq).sort((a, b) => a - b);
+        const pendingSeqs = task.results
+          .filter((r) => r.status === ResultStatus.PENDING)
+          .map((r) => r.seq)
+          .sort((a, b) => a - b);
         for (let i = 0; i < pendingSeqs.length; i += 1) {
           const seq = pendingSeqs[i]!;
           const image = outcome.images[i];

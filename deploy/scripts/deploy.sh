@@ -23,12 +23,13 @@
 #   JUNE_IMAGE_TAG=v1.2.0 SKIP_BACKUP=1 ./deploy/scripts/deploy.sh
 #   JUNE_IMAGE_TAG=v1.2.0 NO_ROLLBACK=1 ./deploy/scripts/deploy.sh   # 排障时保留现场
 # ============================================================================
-set -euo pipefail
+set -Eeuo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
 NEW_TAG="${JUNE_IMAGE_TAG:-}"
 [ -n "$NEW_TAG" ] || die "必须指定镜像 tag:JUNE_IMAGE_TAG=<tag> $0"
 export JUNE_IMAGE_TAG="$NEW_TAG"
+export JUNE_IMAGE_PREFIX="${JUNE_IMAGE_PREFIX:-$(env_value JUNE_IMAGE_PREFIX)}"
 export JUNE_IMAGE_PREFIX="${JUNE_IMAGE_PREFIX:-june}"
 
 PREV_TAG="$(read_current_tag)"
@@ -128,16 +129,17 @@ ok "迁移完成"
 # ---------------------------------------------------------------------------
 step "3/5 重启服务(worker → api → web)"
 # ---------------------------------------------------------------------------
+if [ -n "${JUNE_DEPLOY_STARTED_FILE:-}" ]; then
+  touch "$JUNE_DEPLOY_STARTED_FILE"
+fi
 # --no-deps:不因为依赖关系顺带重建 postgres/redis(有状态服务不参与发布)
 for svc in worker api web; do
   log "更新 $svc"
   compose up -d --no-deps "$svc"
 done
 
-# nginx 用变量 + resolver 做上游解析,容器换 IP 不需要 reload;
-# 但 reload 一次成本极低,可以顺带让它丢掉旧连接与旧证书缓存。
-compose exec -T nginx nginx -t >/dev/null 2>&1 && compose exec -T nginx nginx -s reload >/dev/null 2>&1 \
-  || warn "nginx reload 未执行成功(不影响流量:上游按 DNS TTL 重新解析)"
+# Git checkout 会替换 bind mount 的文件 inode;重建入口确保读到新配置。
+compose up -d --no-deps --force-recreate nginx
 
 # ---------------------------------------------------------------------------
 step "4/5 健康检查"

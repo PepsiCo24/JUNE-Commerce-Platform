@@ -79,8 +79,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM deps AS build
 # 这里才复制源码(.dockerignore 已排除 node_modules/.next/dist 等)
 COPY . .
-# Prisma 7 客户端生成到 packages/db/generated(不入库,必须在镜像内生成)
-RUN pnpm db:generate
+# 仅供 Prisma 读取配置,构建不会连接数据库;生产连接由 Compose 注入。
+ARG DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
+ARG NEXT_PUBLIC_ASSET_HOST=
+ENV NEXT_PUBLIC_ASSET_HOST=${NEXT_PUBLIC_ASSET_HOST}
 # 根 build 脚本:db:generate -> packages 全量 build -> apps 全量 build
 # Next.js 需要 output: 'standalone'(见 docs/DEPLOYMENT.md 前置条件)
 ENV NEXT_TELEMETRY_DISABLED=1

@@ -20,7 +20,6 @@ import { Input } from '@/components/ui/input';
 import { LoadMore } from '@/components/ui/pagination';
 import { Select } from '@/components/ui/select';
 import { DataTable, type Column } from '@/components/ui/table';
-import { InfoHint } from '@/components/ui/tooltip';
 import { formatDateTime } from '@/lib/utils';
 
 const FILTERS = {
@@ -119,14 +118,31 @@ export function TasksScreen(): React.JSX.Element {
     { key: 'model', header: '模型', render: (row) => row.modelDisplayName ?? row.modelKey },
     { key: 'total', header: '总数', numeric: true, render: (row) => formatInteger(row.total) },
     { key: 'ok', header: '成功', numeric: true, render: (row) => formatInteger(row.succeeded) },
-    { key: 'rate', header: '成功率', numeric: true, render: (row) => formatRate(row.successRate) },
-    { key: 'p95', header: 'P95', numeric: true, hideOnMobile: true, render: (row) => formatDuration(row.p95UpstreamMs) },
-    { key: 'calls', header: '上游调用', numeric: true, hideOnMobile: true, render: (row) => formatInteger(row.providerCallCount) },
+    {
+      key: 'rate',
+      header: '成功率',
+      numeric: true,
+      render: (row) => (row.rateDenominator > 0 ? formatRate(row.successRate) : '—'),
+    },
+    {
+      key: 'p95',
+      header: '95% 请求耗时',
+      numeric: true,
+      hideOnMobile: true,
+      render: (row) => formatDuration(row.p95UpstreamMs),
+    },
+    {
+      key: 'calls',
+      header: '模型调用次数',
+      numeric: true,
+      hideOnMobile: true,
+      render: (row) => formatInteger(row.providerCallCount),
+    },
   ];
 
   return (
     <div className="space-y-6">
-      <PageHeader title="任务" description="只读。管理站不代替用户重试或取消,避免对可能已计费的上游调用盲目重试。" />
+      <PageHeader title="任务" description="跟踪生成进度、比较模型表现并排查失败原因。" />
 
       <div className="flex flex-wrap items-end gap-3">
         <Input
@@ -159,7 +175,7 @@ export function TasksScreen(): React.JSX.Element {
           />
         </div>
         <Input
-          placeholder="供应商 slug"
+          placeholder="供应商标识"
           value={filters.providerSlug}
           aria-label="供应商"
           className="w-40"
@@ -176,8 +192,18 @@ export function TasksScreen(): React.JSX.Element {
             ]}
           />
         </div>
-        <Input type="date" aria-label="开始" value={filters.from} onChange={(event) => setFilters({ from: event.target.value })} />
-        <Input type="date" aria-label="结束" value={filters.to} onChange={(event) => setFilters({ to: event.target.value })} />
+        <Input
+          type="date"
+          aria-label="开始"
+          value={filters.from}
+          onChange={(event) => setFilters({ from: event.target.value })}
+        />
+        <Input
+          type="date"
+          aria-label="结束"
+          value={filters.to}
+          onChange={(event) => setFilters({ to: event.target.value })}
+        />
         {isFiltered ? (
           <Button variant="ghost" size="sm" onClick={resetFilters}>
             清空筛选
@@ -188,14 +214,10 @@ export function TasksScreen(): React.JSX.Element {
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold">按模型统计</h2>
-          {statsQuery.data ? (
-            <InfoHint>
-              {statsQuery.data.definitions.successRate} {statsQuery.data.definitions.p95}{' '}
-              {statsQuery.data.definitions.providerCallCount}
-            </InfoHint>
-          ) : null}
         </div>
-        {statsQuery.isError ? <ErrorState error={statsQuery.error} onRetry={() => void statsQuery.refetch()} /> : null}
+        {statsQuery.isError ? (
+          <ErrorState error={statsQuery.error} onRetry={() => void statsQuery.refetch()} />
+        ) : null}
         <DataTable
           columns={statsColumns}
           rows={statsQuery.data?.rows ?? []}
@@ -205,7 +227,9 @@ export function TasksScreen(): React.JSX.Element {
         />
       </section>
 
-      {listQuery.isError ? <ErrorState error={listQuery.error} onRetry={() => void listQuery.refetch()} /> : null}
+      {listQuery.isError ? (
+        <ErrorState error={listQuery.error} onRetry={() => void listQuery.refetch()} />
+      ) : null}
       <DataTable
         columns={columns}
         rows={rows}

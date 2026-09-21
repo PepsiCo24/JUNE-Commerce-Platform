@@ -31,6 +31,7 @@
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 
+export JUNE_IMAGE_PREFIX="${JUNE_IMAGE_PREFIX:-$(env_value JUNE_IMAGE_PREFIX)}"
 export JUNE_IMAGE_PREFIX="${JUNE_IMAGE_PREFIX:-june}"
 require_cmd docker
 

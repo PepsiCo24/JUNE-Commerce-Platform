@@ -1,7 +1,7 @@
 'use client';
 
 import type { PublicUserProfile } from '@june/shared';
-import { ExternalLink, MapPin } from 'lucide-react';
+import { MapPin, MessageCircle, Phone } from 'lucide-react';
 import Link from 'next/link';
 
 import { Avatar } from '@/components/ui/avatar';
@@ -29,16 +29,17 @@ export function PublicProfileView({ profile }: { profile: PublicUserProfile }): 
                 {profile.location}
               </span>
             ) : null}
-            {profile.website ? (
-              <a
-                href={profile.website}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="inline-flex items-center gap-1 text-accent hover:underline"
-              >
-                <ExternalLink size={14} aria-hidden />
-                个人网站
-              </a>
+            {profile.phone ? (
+              <span className="inline-flex items-center gap-1">
+                <Phone size={14} aria-hidden />
+                {profile.phone}
+              </span>
+            ) : null}
+            {profile.wechatId ? (
+              <span className="inline-flex items-center gap-1">
+                <MessageCircle size={14} aria-hidden />
+                微信 {profile.wechatId}
+              </span>
             ) : null}
           </div>
           <dl className="mt-4 flex flex-wrap gap-6 text-sm">

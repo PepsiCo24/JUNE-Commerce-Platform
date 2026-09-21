@@ -27,6 +27,16 @@ export const CLEANUP_KIND_LABELS: Record<string, string> = {
   queue_record: '队列记录',
 };
 
+export const ASSET_KIND_LABELS: Record<string, string> = {
+  POST_IMAGE: '帖子图',
+  PRODUCT_IMAGE: '商品图',
+  SHOP_IMAGE: '店铺图',
+  AVATAR: '头像',
+  REFERENCE_IMAGE: '参考图',
+  GENERATED_IMAGE: '生成图',
+  IMPORT_FILE: '导入文件',
+};
+
 export const PLATFORM_OPTIONS = TARGET_PLATFORMS.map((item) => ({ value: item.value, label: item.label }));
 
 export function labelOf(map: Record<string, string>, value: string): string {

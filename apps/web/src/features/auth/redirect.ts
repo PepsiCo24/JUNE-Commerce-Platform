@@ -31,6 +31,8 @@ export function sanitizeRedirect(value: string | null | undefined, fallback: str
 
   const pathOnly = raw.split(/[?#]/)[0] ?? '';
   if (DISALLOWED_TARGETS.includes(pathOnly)) return fallback;
+  // 站点登录绝不能回跳进管理站(管理站用独立会话)
+  if (pathOnly === '/admin' || pathOnly.startsWith('/admin/')) return fallback;
 
   return raw;
 }

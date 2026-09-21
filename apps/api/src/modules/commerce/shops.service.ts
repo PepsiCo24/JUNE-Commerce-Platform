@@ -5,6 +5,8 @@ import {
   INHERITABLE_SHOP_FIELD_VALUES,
   PRIMARY_LOGIN_PURPOSE,
   SHOP_MAX_DEPTH,
+  maskAccount,
+  maskPhone,
   type InheritableShopField,
   type PageResult,
   type ShopCreateInput,
@@ -240,7 +242,7 @@ export class ShopsService {
         status: shop.status,
         productCount: counts.get(shop.id)?.productCount ?? 0,
         platform: shop.platform,
-        platformAccount: shop.platformAccount,
+        platformAccount: maskAccount(shop.platformAccount),
       })),
       // 只连接当前结果集内的店铺,不会因为父店被过滤掉而产生悬空边
       edges: shops.flatMap((shop) =>
@@ -261,9 +263,10 @@ export class ShopsService {
   // ---------------------------------------------------------------------------
 
   async create(user: AuthUser, input: ShopCreateInput, meta: ClientMeta): Promise<ShopDetail> {
+    const normalized = normalizeShopPhoneInput(input);
     let parent: (Shop | null) = null;
-    if (input.parentId) {
-      parent = await this.loadAttachableParent(user, input.parentId);
+    if (normalized.parentId) {
+      parent = await this.loadAttachableParent(user, normalized.parentId);
       const graph = await this.loadRelationGraph(user.id);
       // 新店还没有下级,子树高度为 1
       if (exceedsMaxDepth({ newParentId: parent.id, subtreeHeight: 1, getParent: graph.getParent })) {
@@ -274,9 +277,9 @@ export class ShopsService {
       }
     }
 
-    const inheritance = resolveCreateInheritance(input, parent);
+    const inheritance = resolveCreateInheritance(normalized, parent);
 
-    if (input.loginPassword && !(input.platformAccount ?? null)) {
+    if (normalized.loginPassword && !(normalized.platformAccount ?? null)) {
       throw AppException.badRequest(
         ERROR_CODES.VALIDATION_FAILED,
         '设置登录密码前请先填写平台账号用户名',
@@ -288,12 +291,12 @@ export class ShopsService {
         data: {
           ownerId: user.id,
           type: parent ? ShopType.SUB : ShopType.MAIN,
-          status: input.status,
-          name: input.name,
-          url: input.url ?? null,
-          description: input.description ?? null,
+          status: normalized.status ?? 'ACTIVE',
+          name: normalized.name,
+          url: normalized.url ?? null,
+          description: normalized.description ?? null,
           parentId: parent?.id ?? null,
-          platformAccount: input.platformAccount ?? null,
+          platformAccount: normalized.platformAccount ?? null,
           // 生效值写实到子店行上:列表查询无需回溯主店,升为主店时也不会字段变空
           platform: inheritance.values.platform ?? null,
           contactName: inheritance.values.contactName ?? null,
@@ -307,8 +310,12 @@ export class ShopsService {
         ownerId: user.id,
         shopId: shop.id,
         platformAccount: shop.platformAccount,
-        loginPassword: input.loginPassword,
+        loginPassword: normalized.loginPassword,
       });
+
+      if (normalized.alipayAccountId !== undefined) {
+        await this.bindAlipayAccount(tx, user.id, shop.id, normalized.alipayAccountId);
+      }
 
       return shop;
     });
@@ -323,7 +330,7 @@ export class ShopsService {
         type: created.type,
         parentId: created.parentId,
         overriddenFields: created.overriddenFields,
-        hasPrimaryPassword: Boolean(input.loginPassword),
+        hasPrimaryPassword: Boolean(normalized.loginPassword),
       },
       ip: meta.ip,
       userAgent: meta.userAgent,
@@ -338,18 +345,19 @@ export class ShopsService {
     input: ShopUpdateInput,
     meta: ClientMeta,
   ): Promise<ShopDetail> {
+    const normalized = normalizeShopPhoneInput(input);
     const before = await this.mustOwn(user, id);
 
-    const explicitFields = collectExplicitInheritableFields(input);
-    const parentChanged = input.parentId !== undefined && (input.parentId ?? null) !== before.parentId;
+    const explicitFields = collectExplicitInheritableFields(normalized);
+    const parentChanged = normalized.parentId !== undefined && (normalized.parentId ?? null) !== before.parentId;
 
     let nextParent: Shop | null = null;
     let nextType: ShopType = before.type;
     let nextParentId: string | null = before.parentId;
 
     if (parentChanged) {
-      if (input.parentId) {
-        nextParent = await this.loadAttachableParent(user, input.parentId);
+      if (normalized.parentId) {
+        nextParent = await this.loadAttachableParent(user, normalized.parentId);
         const graph = await this.loadRelationGraph(user.id);
         this.assertNoCycle(id, nextParent.id, graph);
         const subtreeHeight = computeSubtreeHeight(id, graph.getChildren);
@@ -369,7 +377,7 @@ export class ShopsService {
 
     const inheritableData: Partial<InheritableValues> = {};
     for (const field of INHERITABLE_SHOP_FIELD_VALUES) {
-      const value = input[field];
+      const value = normalized[field];
       if (value !== undefined) inheritableData[field] = value ?? null;
     }
 
@@ -387,7 +395,11 @@ export class ShopsService {
     }
     // 升为主店时清空覆盖标记,但保留当前生效值
 
-    if (input.loginPassword && (input.platformAccount === null || (input.platformAccount === undefined && !before.platformAccount))) {
+    if (
+      normalized.loginPassword &&
+      (normalized.platformAccount === null ||
+        (normalized.platformAccount === undefined && !before.platformAccount))
+    ) {
       throw AppException.badRequest(
         ERROR_CODES.VALIDATION_FAILED,
         '设置登录密码前请先填写平台账号用户名',
@@ -396,22 +408,24 @@ export class ShopsService {
 
     const data: Prisma.ShopUncheckedUpdateInput = {
       ...inheritableData,
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.platformAccount !== undefined ? { platformAccount: input.platformAccount ?? null } : {}),
-      ...(input.url !== undefined ? { url: input.url ?? null } : {}),
-      ...(input.description !== undefined ? { description: input.description ?? null } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(normalized.name !== undefined ? { name: normalized.name } : {}),
+      ...(normalized.platformAccount !== undefined
+        ? { platformAccount: normalized.platformAccount ?? null }
+        : {}),
+      ...(normalized.url !== undefined ? { url: normalized.url ?? null } : {}),
+      ...(normalized.description !== undefined ? { description: normalized.description ?? null } : {}),
+      ...(normalized.status !== undefined ? { status: normalized.status } : {}),
       ...(parentChanged ? { parentId: nextParentId, type: nextType } : {}),
       overriddenFields,
     };
 
-    const propagationPlan = buildPropagationPlan(input);
+    const propagationPlan = buildPropagationPlan(normalized);
 
     const after = await this.prisma.db.$transaction(async (tx) => {
       const updated = await tx.shop.update({ where: { id }, data });
 
       // 主店同步:一个字段一条 updateMany,已覆盖该字段的子店被 where 排除在外
-      if (updated.type === ShopType.MAIN && input.propagateToChildren && propagationPlan.length > 0) {
+      if (updated.type === ShopType.MAIN && normalized.propagateToChildren && propagationPlan.length > 0) {
         for (const op of buildPropagationUpdates(updated.id, propagationPlan)) {
           await tx.shop.updateMany(op);
         }
@@ -421,10 +435,14 @@ export class ShopsService {
         ownerId: user.id,
         shopId: updated.id,
         platformAccount: updated.platformAccount,
-        loginPassword: input.loginPassword,
-        clearLoginPassword: input.clearLoginPassword,
-        accountChanged: input.platformAccount !== undefined,
+        loginPassword: normalized.loginPassword,
+        clearLoginPassword: normalized.clearLoginPassword,
+        accountChanged: normalized.platformAccount !== undefined,
       });
+
+      if (normalized.alipayAccountId !== undefined) {
+        await this.bindAlipayAccount(tx, user.id, updated.id, normalized.alipayAccountId);
+      }
 
       return updated;
     });
@@ -434,10 +452,38 @@ export class ShopsService {
       action: 'shop.update',
       targetType: 'Shop',
       targetId: id,
-      diff: this.audit.buildDiff({ ...before }, { ...after }),
+      // 仅对白名单字段做 diff;账号/联系方式等 PII 由 AuditService 记为 { changed: true }
+      diff: this.audit.buildDiff(
+        {
+          name: before.name,
+          status: before.status,
+          url: before.url,
+          description: before.description,
+          parentId: before.parentId,
+          platform: before.platform,
+          platformAccount: before.platformAccount,
+          contactName: before.contactName,
+          contactInfo: before.contactInfo,
+          note: before.note,
+          overriddenFields: before.overriddenFields,
+        },
+        {
+          name: after.name,
+          status: after.status,
+          url: after.url,
+          description: after.description,
+          parentId: after.parentId,
+          platform: after.platform,
+          platformAccount: after.platformAccount,
+          contactName: after.contactName,
+          contactInfo: after.contactInfo,
+          note: after.note,
+          overriddenFields: after.overriddenFields,
+        },
+      ),
       metadata: {
         propagated:
-          after.type === ShopType.MAIN && input.propagateToChildren
+          after.type === ShopType.MAIN && normalized.propagateToChildren
             ? propagationPlan.map((step) => step.field)
             : [],
         overriddenFields: after.overriddenFields,
@@ -486,7 +532,22 @@ export class ShopsService {
       action: 'shop.reset-inheritance',
       targetType: 'Shop',
       targetId: id,
-      diff: this.audit.buildDiff({ ...shop }, { ...updated }),
+      diff: this.audit.buildDiff(
+        {
+          platform: shop.platform,
+          contactName: shop.contactName,
+          contactInfo: shop.contactInfo,
+          note: shop.note,
+          overriddenFields: shop.overriddenFields,
+        },
+        {
+          platform: updated.platform,
+          contactName: updated.contactName,
+          contactInfo: updated.contactInfo,
+          note: updated.note,
+          overriddenFields: updated.overriddenFields,
+        },
+      ),
       metadata: { fields: input.fields, parentId: parent.id },
       ip: meta.ip,
       userAgent: meta.userAgent,
@@ -907,7 +968,8 @@ export class ShopsService {
       type: row.type,
       status: row.status,
       platform: row.platform,
-      platformAccount: row.platformAccount,
+      // 列表不返回平台账号全文,降低肩窥与前端缓存泄漏面;详情接口仍给 owner 明文供编辑
+      platformAccount: maskAccount(row.platformAccount),
       url: row.url,
       parentId: row.parentId,
       parentName: row.parent?.name ?? null,
@@ -1071,7 +1133,7 @@ export class ShopsService {
   }
 
   private async buildDetail(shop: Shop): Promise<ShopDetail> {
-    const [parent, counts, primaryByShop] = await Promise.all([
+    const [parent, counts, primaryByShop, alipay] = await Promise.all([
       shop.parentId
         ? this.prisma.db.shop.findFirst({
             where: { id: shop.parentId, deletedAt: null },
@@ -1086,6 +1148,11 @@ export class ShopsService {
         : Promise.resolve(null),
       this.countsFor([shop.id]),
       this.primaryCredentialsFor([shop.id]),
+      this.prisma.db.alipayAccount.findFirst({
+        where: { shopId: shop.id, ownerId: shop.ownerId, deletedAt: null },
+        select: { id: true, name: true, phone: true },
+        orderBy: { updatedAt: 'desc' },
+      }),
     ]);
 
     const totalProductCounts = await this.computeTotalProductCounts(shop.ownerId, [shop.id]);
@@ -1098,10 +1165,20 @@ export class ShopsService {
 
     return {
       ...summary,
+      // 详情给 owner 明文,便于编辑;列表/关系图已在 toSummary 中脱敏
+      platformAccount: shop.platformAccount,
       description: shop.description,
       contactName: shop.contactName,
+      phone: shop.contactInfo,
       contactInfo: shop.contactInfo,
       note: shop.note,
+      alipayAccount: alipay
+        ? {
+            id: alipay.id,
+            name: alipay.name,
+            phoneMasked: maskPhone(alipay.phone),
+          }
+        : null,
       inheritance: computeShopInheritance({
         shop,
         overriddenFields: shop.overriddenFields,
@@ -1109,4 +1186,43 @@ export class ShopsService {
       }),
     };
   }
+
+  /**
+   * 将店铺绑定到指定支付宝账户。传 null 解除当前店铺上的全部绑定。
+   * 同一支付宝账户只能挂一家店;绑定新店时会从旧店解绑。
+   */
+  private async bindAlipayAccount(
+    tx: CommerceTransactionClient,
+    ownerId: string,
+    shopId: string,
+    alipayAccountId: string | null,
+  ): Promise<void> {
+    // 先清掉本店现有绑定,保证一店至多一个支付宝账户
+    await tx.alipayAccount.updateMany({
+      where: { ownerId, shopId, deletedAt: null },
+      data: { shopId: null },
+    });
+
+    if (!alipayAccountId) return;
+
+    const account = await tx.alipayAccount.findFirst({
+      where: { id: alipayAccountId, ownerId, deletedAt: null },
+    });
+    if (!account) {
+      throw AppException.badRequest(ERROR_CODES.VALIDATION_FAILED, '支付宝账户不存在或不属于当前用户');
+    }
+
+    await tx.alipayAccount.update({
+      where: { id: account.id },
+      data: { shopId },
+    });
+  }
+}
+
+/** phone 是对外字段名,落库仍用 contactInfo(可继承) */
+function normalizeShopPhoneInput<T extends { phone?: string | null; contactInfo?: string | null }>(
+  input: T,
+): T {
+  if (input.phone === undefined) return input;
+  return { ...input, contactInfo: input.phone };
 }

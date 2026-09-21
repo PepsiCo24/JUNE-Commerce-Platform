@@ -47,11 +47,11 @@ export class AlipayAccountsService {
       ownerId: user.id,
       deletedAt: null,
       ...(query.shopId ? { shopId: query.shopId } : {}),
+      // 禁止按手机号原文检索,避免完整号码进入查询条件与日志
       ...(query.q
         ? {
             OR: [
               { name: { contains: query.q, mode: 'insensitive' } },
-              { phone: { contains: query.q, mode: 'insensitive' } },
               { note: { contains: query.q, mode: 'insensitive' } },
             ],
           }
@@ -187,6 +187,7 @@ export class AlipayAccountsService {
       action: 'alipay.update',
       targetType: 'AlipayAccount',
       targetId: updated.id,
+      // phone 等 PII 由 AuditService 脱敏为 { changed: true },不写明文
       diff: this.audit.buildDiff(
         { name: before.name, phone: before.phone, note: before.note, shopId: before.shopId },
         { name: updated.name, phone: updated.phone, note: updated.note, shopId: updated.shopId },
@@ -234,7 +235,11 @@ export class AlipayAccountsService {
       userAgent: meta.userAgent,
     });
 
-    return { id: row.id, phone: row.phone };
+    return {
+      id: row.id,
+      phone: row.phone,
+      expiresInSeconds: REVEAL_VISIBLE_SECONDS,
+    };
   }
 
   async revealPassword(

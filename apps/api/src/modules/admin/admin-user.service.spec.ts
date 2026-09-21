@@ -239,7 +239,7 @@ describe('AdminUserService 店铺凭据下钻', () => {
     );
   });
 
-  it('只返回 { id, purpose, account, loginUrl, note },不含任何 password 字段', async () => {
+  it('只返回脱敏后的凭据字段,不含任何 password 与账号明文', async () => {
     const result = await service.listShops('u1', { limit: 20 });
     const credential = result.items[0]?.credentials[0];
 
@@ -252,12 +252,17 @@ describe('AdminUserService 店铺凭据下钻', () => {
       'purpose',
     ]);
 
+    expect(credential?.account).toBe('sel****test');
+    expect(credential?.note).toBeNull();
+
     // 明文与密文都不能出现在响应体的任何位置
     const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('seller@shop.test');
     expect(serialized).not.toContain('plain-should-never-appear');
     expect(serialized).not.toContain('cipher-should-never-appear');
     expect(serialized).not.toMatch(/password/i);
     expect(serialized).not.toContain('keyVersion');
+    expect(serialized).not.toContain('主账号');
   });
 
   it('查询本身也不读取密码列(select 白名单)', async () => {

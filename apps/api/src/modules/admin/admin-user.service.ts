@@ -11,6 +11,8 @@ import {
   decodeCursor,
   encodeCursor,
   ERROR_CODES,
+  maskAccount,
+  maskPhone,
   type AdminUserSummary,
   type CursorQuery,
   type PageResult,
@@ -72,6 +74,7 @@ export interface ClientMeta {
  * `passwordCipher` / `passwordIv` / `passwordTag` / `keyVersion` **根本不会从数据库读出**,
  * 不存在"取出来了但忘记删字段"的风险。解密接口(credential.reveal)只对店铺 owner 开放,
  * 且需要 ReauthGuard 通过,管理站没有任何入口。
+ * 返回给管理端时账号与联系方式会再脱敏,备注不返回。
  */
 const CREDENTIAL_SAFE_SELECT = {
   id: true,
@@ -396,6 +399,7 @@ export class AdminUserService {
   /**
    * 某用户的店铺列表(含凭据条目)。
    * 凭据用 CREDENTIAL_SAFE_SELECT 投影,**password 相关字段一律不查询、不返回**。
+   * 联系方式与凭据账号在响应中脱敏,管理端不可见用户隐私明文。
    */
   async listShops(
     userId: string,
@@ -461,20 +465,20 @@ export class AdminUserService {
         parentId: shop.parentId,
         parentName: shop.parent?.name ?? null,
         url: shop.url,
-        contactName: shop.contactName,
-        contactInfo: shop.contactInfo,
+        contactName: shop.contactName ? maskAccount(shop.contactName) : null,
+        contactInfo: shop.contactInfo ? maskPhone(shop.contactInfo) : null,
         productCount: productCountByShop.get(shop.id) ?? 0,
         childCount: childCountByShop.get(shop.id) ?? 0,
         createdAt: shop.createdAt.toISOString(),
         updatedAt: shop.updatedAt.toISOString(),
-        // 只有用途/账号/登录地址/备注;password 字段在类型与查询两层都不存在
+        // 只有用途/脱敏账号/登录地址;备注与密码一律不暴露
         credentials: shop.credentials.map(
           (c): AdminShopCredentialView => ({
             id: c.id,
             purpose: c.purpose,
-            account: c.account,
+            account: maskAccount(c.account) ?? '****',
             loginUrl: c.loginUrl,
-            note: c.note,
+            note: null,
           }),
         ),
       })),

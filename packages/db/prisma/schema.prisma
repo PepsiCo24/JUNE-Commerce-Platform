@@ -36,7 +36,10 @@ model User {
   avatarKey    String? // Asset 对象键(头像)
   bio          String?    @db.VarChar(500)
   location     String?    @db.VarChar(100)
-  website      String?    @db.VarChar(200)
+  /// 联系手机号(可选,公开主页可见)
+  phone        String?    @db.VarChar(20)
+  /// 微信号(可选,公开主页可见)
+  wechatId     String?    @db.VarChar(64)
   /// 用户界面偏好(JSON):theme / reducedMotion 等
   preferences  Json       @default("{}")
   status       UserStatus @default(ACTIVE)

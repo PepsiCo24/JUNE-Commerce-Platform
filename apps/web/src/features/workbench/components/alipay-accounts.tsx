@@ -51,6 +51,7 @@ interface RevealedPassword {
 interface RevealedPhone {
   id: string;
   phone: string;
+  hideAt: number;
 }
 
 export function AlipayAccountsPage(): React.JSX.Element {
@@ -100,7 +101,14 @@ export function AlipayAccountsPage(): React.JSX.Element {
         undefined,
         { reauthToken: token },
       );
-      setRevealedPhone({ id: row.id, phone: result.phone });
+      setRevealedPhone({
+        id: row.id,
+        phone: result.phone,
+        hideAt: Date.now() + result.expiresInSeconds * 1000,
+      });
+      window.setTimeout(() => {
+        setRevealedPhone((current) => (current?.id === row.id ? null : current));
+      }, result.expiresInSeconds * 1000);
     } catch (error) {
       toast.error(describeError(error));
     }
@@ -162,18 +170,31 @@ export function AlipayAccountsPage(): React.JSX.Element {
         render: (row) => (
           <div className="flex items-center gap-1">
             <span className="font-mono text-sm">
-              {revealedPhone?.id === row.id ? revealedPhone.phone : row.phoneMasked}
+              {revealedPhone?.id === row.id && Date.now() < revealedPhone.hideAt
+                ? revealedPhone.phone
+                : row.phoneMasked}
             </span>
             <Button
               variant="ghost"
               size="icon"
-              aria-label={revealedPhone?.id === row.id ? '隐藏手机号' : '查看手机号'}
+              aria-label={
+                revealedPhone?.id === row.id && Date.now() < revealedPhone.hideAt
+                  ? '隐藏手机号'
+                  : '查看手机号'
+              }
               onClick={() => {
-                if (revealedPhone?.id === row.id) setRevealedPhone(null);
-                else void revealPhone(row);
+                if (revealedPhone?.id === row.id && Date.now() < revealedPhone.hideAt) {
+                  setRevealedPhone(null);
+                } else {
+                  void revealPhone(row);
+                }
               }}
             >
-              {revealedPhone?.id === row.id ? <EyeOff size={14} /> : <Phone size={14} />}
+              {revealedPhone?.id === row.id && Date.now() < revealedPhone.hideAt ? (
+                <EyeOff size={14} />
+              ) : (
+                <Phone size={14} />
+              )}
             </Button>
           </div>
         ),

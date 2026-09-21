@@ -110,7 +110,7 @@ export function ShopListPage(): React.JSX.Element {
     <div className="space-y-4">
       <PageHeader
         title="我的店铺"
-        description="以店铺为入口管理商品与凭据。支持搜索、分页与平台筛选。"
+        description="以店铺为入口管理商品。支持搜索、分页与平台筛选。"
         breadcrumbs={[{ label: '工作台', href: '/workbench' }, { label: '店铺' }]}
         actions={
           <div className="flex gap-2">

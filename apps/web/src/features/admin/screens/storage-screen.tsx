@@ -26,7 +26,7 @@ import { LoadMore } from '@/components/ui/pagination';
 import { Select } from '@/components/ui/select';
 import { DataTable, type Column } from '@/components/ui/table';
 import { Switch } from '@/components/ui/toggle';
-import { InfoHint } from '@/components/ui/tooltip';
+import { MetricCard } from '@/features/admin/components/metric-card';
 import { formatDateTime } from '@/lib/utils';
 
 const FILTERS = { kind: 'ALL' };
@@ -102,7 +102,13 @@ export function StorageScreen(): React.JSX.Element {
   const topColumns: Array<Column<AdminStorageOverviewView['topUsers'][number]>> = [
     { key: 'email', header: '用户', render: (row) => row.email },
     { key: 'bytes', header: '用量', numeric: true, render: (row) => formatBytes(row.bytesUsed) },
-    { key: 'count', header: '资产数', numeric: true, hideOnMobile: true, render: (row) => formatInteger(row.assetCount) },
+    {
+      key: 'count',
+      header: '资产数',
+      numeric: true,
+      hideOnMobile: true,
+      render: (row) => formatInteger(row.assetCount),
+    },
   ];
 
   const runColumns: Array<Column<CleanupRunView>> = [
@@ -111,24 +117,31 @@ export function StorageScreen(): React.JSX.Element {
     { key: 'status', header: '状态', render: (row) => <StatusBadge status={row.status} /> },
     { key: 'matched', header: '匹配', numeric: true, render: (row) => formatInteger(row.matched) },
     { key: 'affected', header: '影响', numeric: true, render: (row) => formatInteger(row.affected) },
-    { key: 'freed', header: '释放', numeric: true, hideOnMobile: true, render: (row) => formatBytes(row.freedBytes) },
+    {
+      key: 'freed',
+      header: '释放',
+      numeric: true,
+      hideOnMobile: true,
+      render: (row) => formatBytes(row.freedBytes),
+    },
     { key: 'started', header: '开始', hideOnMobile: true, render: (row) => formatDateTime(row.startedAt) },
   ];
 
   return (
     <div className="space-y-6">
       {confirmNode}
-      <PageHeader title="存储" description="用量、配额与清理。清理只入队,由 Worker 执行。" />
+      <PageHeader title="存储" description="查看文件空间占用、管理用户配额与清理过期文件。" />
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric label="总量" value={formatBytes(data.totalBytes)} definition={data.definitions.totalBytes} />
-        <Metric label="活跃" value={formatBytes(data.activeBytes)} definition={data.definitions.activeBytes} />
-        <Metric label="回收站" value={formatBytes(data.recycledBytes)} definition={data.definitions.recycledBytes} />
-        <Metric label="孤儿" value={formatBytes(data.orphanBytes)} definition={data.definitions.orphanBytes} />
+        <MetricCard label="总占用" value={formatBytes(data.totalBytes)} hint="平台文件使用的存储空间" />
+        <MetricCard label="使用中文件" value={formatBytes(data.activeBytes)} hint="当前正常使用的文件" />
+        <MetricCard label="回收站" value={formatBytes(data.recycledBytes)} hint="保留期内仍占用空间" />
+        <MetricCard label="未关联文件" value={formatBytes(data.orphanBytes)} hint="可检查并清理的闲置文件" />
       </section>
 
       <p className="text-sm text-fg-muted">
-        待物理清除 {formatInteger(data.pendingCleanup.dueAssetCount)} 个 / {formatBytes(data.pendingCleanup.dueBytes)}
+        待清理 {formatInteger(data.pendingCleanup.dueAssetCount)} 个 /{' '}
+        {formatBytes(data.pendingCleanup.dueBytes)}
         ,回收期 {data.pendingCleanup.recycleDays} 天
       </p>
 
@@ -136,11 +149,12 @@ export function StorageScreen(): React.JSX.Element {
         data={growth}
         series={[{ key: 'bytes', name: '新增存储', colorClass: 'purple' }]}
         kind="bytes"
-        definition={data.definitions.growth30d}
+        title="近 30 天存储增长"
+        description="每天新增文件占用的空间"
       />
 
       <section className="space-y-3">
-        <h2 className="text-base font-semibold">用量 Top</h2>
+        <h2 className="text-base font-semibold">用户存储排行</h2>
         <DataTable
           columns={topColumns}
           rows={data.topUsers}
@@ -172,7 +186,11 @@ export function StorageScreen(): React.JSX.Element {
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <Field label="用户 ID" htmlFor="quota-user">
-                <Input id="quota-user" value={quotaUserId} onChange={(event) => setQuotaUserId(event.target.value)} />
+                <Input
+                  id="quota-user"
+                  value={quotaUserId}
+                  onChange={(event) => setQuotaUserId(event.target.value)}
+                />
               </Field>
               <Field label="配额 (GB)" htmlFor="quota-gb">
                 <Input id="quota-gb" value={quotaGb} onChange={(event) => setQuotaGb(event.target.value)} />
@@ -207,7 +225,14 @@ export function StorageScreen(): React.JSX.Element {
                 />
               </div>
               <Field label="单次上限" htmlFor="cleanup-limit">
-                <Input id="cleanup-limit" type="number" min={1} max={10000} value={limit} onChange={(event) => setLimit(event.target.value)} />
+                <Input
+                  id="cleanup-limit"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={limit}
+                  onChange={(event) => setLimit(event.target.value)}
+                />
               </Field>
               <label className="flex items-center gap-2 text-sm">
                 <Switch checked={dryRun} onChange={setDryRun} /> 预览(不删除)
@@ -218,7 +243,9 @@ export function StorageScreen(): React.JSX.Element {
                 onClick={async () => {
                   const ok = await confirm({
                     title: dryRun ? '入队预览清理?' : '入队真实清理?',
-                    description: dryRun ? 'Worker 只统计不删除。' : '将实际删除匹配的对象。只入队,不在 API 同步执行。',
+                    description: dryRun
+                      ? '预览仅统计可清理内容，不会删除文件。'
+                      : '将实际删除匹配的对象。只入队,不在 API 同步执行。',
                     danger: !dryRun,
                     requireText: dryRun ? undefined : 'CLEANUP',
                     confirmLabel: dryRun ? '预览' : '清理',
@@ -248,7 +275,9 @@ export function StorageScreen(): React.JSX.Element {
             />
           </div>
         </div>
-        {runsQuery.isError ? <ErrorState error={runsQuery.error} onRetry={() => void runsQuery.refetch()} /> : null}
+        {runsQuery.isError ? (
+          <ErrorState error={runsQuery.error} onRetry={() => void runsQuery.refetch()} />
+        ) : null}
         <DataTable
           columns={runColumns}
           rows={runs}
@@ -265,24 +294,3 @@ export function StorageScreen(): React.JSX.Element {
     </div>
   );
 }
-
-function Metric({
-  label,
-  value,
-  definition,
-}: {
-  label: string;
-  value: string;
-  definition: string;
-}): React.JSX.Element {
-  return (
-    <div className="rounded-lg border border-border-default bg-surface p-4">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-xs text-fg-muted">{label}</p>
-        <InfoHint>{definition}</InfoHint>
-      </div>
-      <p className="mt-2 text-xl font-semibold tabular">{value}</p>
-    </div>
-  );
-}
-

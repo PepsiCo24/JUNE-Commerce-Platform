@@ -15,7 +15,6 @@ import { useShopMutations } from '../hooks/use-shops';
 
 type ChildrenStrategy = 'reject' | 'promote_to_main' | 'move_to_shop' | 'delete';
 type ProductsStrategy = 'reject' | 'move_to_shop' | 'archive' | 'delete';
-type CredentialsStrategy = 'reject' | 'delete';
 
 export function ShopDeleteDialog({
   open,
@@ -25,7 +24,6 @@ export function ShopDeleteDialog({
   shopType,
   childCount,
   productCount,
-  credentialCount,
   onDeleted,
 }: {
   open: boolean;
@@ -35,7 +33,6 @@ export function ShopDeleteDialog({
   shopType: 'MAIN' | 'SUB';
   childCount: number;
   productCount: number;
-  credentialCount: number;
   onDeleted?: () => void;
 }): React.JSX.Element {
   const { remove } = useShopMutations();
@@ -45,7 +42,6 @@ export function ShopDeleteDialog({
   const [childrenTargetShopId, setChildrenTargetShopId] = useState<string | null>(null);
   const [productsStrategy, setProductsStrategy] = useState<ProductsStrategy>('reject');
   const [productsTargetShopId, setProductsTargetShopId] = useState<string | null>(null);
-  const [credentialsStrategy, setCredentialsStrategy] = useState<CredentialsStrategy>('reject');
 
   const otherMains = useMemo(
     () =>
@@ -67,13 +63,12 @@ export function ShopDeleteDialog({
           childrenTargetShopId: childrenStrategy === 'move_to_shop' ? (childrenTargetShopId ?? undefined) : undefined,
           productsStrategy: productCount > 0 ? productsStrategy : 'reject',
           productsTargetShopId: productsStrategy === 'move_to_shop' ? (productsTargetShopId ?? undefined) : undefined,
-          credentialsStrategy: credentialCount > 0 ? credentialsStrategy : 'reject',
+          // 工作台已去掉凭据管理;删除店铺时一并清理关联登录信息
+          credentialsStrategy: 'delete',
           confirmName,
         },
       });
-      toast.success(
-        `已删除店铺。子店 ${result.childrenAffected}、商品 ${result.productsAffected}、凭据 ${result.credentialsAffected}`,
-      );
+      toast.success(`已删除店铺。子店 ${result.childrenAffected}、商品 ${result.productsAffected}`);
       onOpenChange(false);
       onDeleted?.();
     } catch (error) {
@@ -91,7 +86,7 @@ export function ShopDeleteDialog({
       theme="dark"
       size="lg"
       title="删除店铺"
-      description="删除不可撤销。主店下的子店、商品与凭据必须显式选择处理方式,不会静默级联删除。"
+      description="删除不可撤销。主店下的子店与商品必须显式选择处理方式,不会静默级联删除。"
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -110,7 +105,7 @@ export function ShopDeleteDialog({
     >
       <div className="space-y-4">
         <p className="text-sm text-fg-muted">
-          当前店铺「{shopName}」：子店 {childCount}、商品 {productCount}、凭据 {credentialCount}。
+          当前店铺「{shopName}」：子店 {childCount}、商品 {productCount}。
         </p>
 
         {needsChildrenChoice ? (
@@ -167,25 +162,6 @@ export function ShopDeleteDialog({
                 .filter((shop) => shop.id !== shopId)
                 .map((shop) => ({ value: shop.id, label: shop.name }))}
               placeholder="选择目标店铺"
-            />
-          </Field>
-        ) : null}
-
-        {credentialCount > 0 ? (
-          <Field
-            label="凭据如何处理"
-            htmlFor="credentials-strategy"
-            required
-            description="凭据不能迁移到其他店铺,只能拒绝删除或一并删除。"
-          >
-            <Select
-              id="credentials-strategy"
-              value={credentialsStrategy}
-              onChange={(value) => setCredentialsStrategy(value as CredentialsStrategy)}
-              options={[
-                { value: 'reject', label: '若仍有凭据则拒绝删除' },
-                { value: 'delete', label: '同时删除凭据' },
-              ]}
             />
           </Field>
         ) : null}

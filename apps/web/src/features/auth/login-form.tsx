@@ -17,7 +17,7 @@ import { useAuthFormState } from './form-state';
 import { PasswordInput } from './password-input';
 import { sanitizeRedirect } from './redirect';
 
-const ERROR_COPY: Record<string, string> = {
+const ERROR_COPY = {
   credentials: '邮箱或密码不正确',
   required: '请填写邮箱和密码',
   invalid: '提交内容无效,请重试',
@@ -39,7 +39,7 @@ export function LoginForm(): React.JSX.Element {
   const redirectTo = sanitizeRedirect(searchParams.get('redirect'));
   const queryError = useMemo(() => {
     const code = searchParams.get('error');
-    return code ? (ERROR_COPY[code] ?? '登录失败,请重试') : null;
+    return code ? (ERROR_COPY[code as keyof typeof ERROR_COPY] ?? '登录失败,请重试') : null;
   }, [searchParams]);
 
   return (
@@ -49,7 +49,10 @@ export function LoginForm(): React.JSX.Element {
       footer={
         <p>
           还没有账号？{' '}
-          <Link href={`/register?redirect=${encodeURIComponent(redirectTo)}`} className="text-accent hover:underline">
+          <Link
+            href={`/register?redirect=${encodeURIComponent(redirectTo)}`}
+            className="text-accent hover:underline"
+          >
             注册
           </Link>
         </p>

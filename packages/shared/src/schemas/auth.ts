@@ -57,15 +57,34 @@ export const updateProfileSchema = z.object({
   displayName: displayNameSchema.optional(),
   bio: z.string().trim().max(500).nullable().optional(),
   location: z.string().trim().max(100).nullable().optional(),
-  website: z
+  phone: z
     .string()
     .trim()
-    .max(200)
+    .max(20)
     .nullable()
     .optional()
-    .refine((value) => value === null || value === undefined || value === '' || /^https?:\/\/.+/i.test(value), {
-      message: '个人网站需以 http:// 或 https:// 开头',
-    }),
+    .refine(
+      (value) =>
+        value === null
+        || value === undefined
+        || value === ''
+        || /^[+]?[\d\s()-]{5,20}$/.test(value),
+      { message: '手机号格式不正确' },
+    ),
+  wechatId: z
+    .string()
+    .trim()
+    .max(64)
+    .nullable()
+    .optional()
+    .refine(
+      (value) =>
+        value === null
+        || value === undefined
+        || value === ''
+        || /^[a-zA-Z][-_a-zA-Z0-9]{5,19}$/.test(value),
+      { message: '微信号需以字母开头,6–20 位字母数字或下划线/减号' },
+    ),
   /** 头像 Asset id;传 null 表示清除头像 */
   avatarAssetId: z.string().min(8).max(64).nullable().optional(),
   theme: z.enum(THEME_PREFERENCES).optional(),
@@ -91,7 +110,8 @@ export interface SessionUser {
   avatarUrl: string | null;
   bio: string | null;
   location: string | null;
-  website: string | null;
+  phone: string | null;
+  wechatId: string | null;
   theme: (typeof THEME_PREFERENCES)[number];
   status: 'ACTIVE' | 'DISABLED';
   roles: string[];

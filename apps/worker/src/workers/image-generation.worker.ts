@@ -35,12 +35,7 @@ import { GateSession } from '../lib/concurrency';
 import { openProviderApiKey } from '../lib/crypto';
 import { clearDeferCount, deferJob } from '../lib/defer';
 import { classifyUpstreamFailure, toProviderFailure } from '../lib/errors';
-import {
-  countResults,
-  failResults,
-  persistImageResult,
-  summarizeTask,
-} from '../lib/generation-results';
+import { countResults, failResults, persistImageResult, summarizeTask } from '../lib/generation-results';
 import { createLogger } from '../lib/logger';
 import { recordFailed, recordProcessed } from '../lib/metrics';
 import { checkModelUsable } from '../lib/model-guard';
@@ -74,21 +69,17 @@ interface ImageInput {
 
 export function createImageGenerationWorker(): Worker<ImageGenerationJob> {
   const env = loadEnv();
-  return new Worker<ImageGenerationJob>(
-    QUEUE_NAMES.imageGeneration,
-    (job, token) => handle(job, token),
-    {
-      connection: queueConnection(),
-      prefix: env.QUEUE_PREFIX,
-      // 进程内取件上限。全局上限由 Redis 闸门保证,因此这里等于全局额度是安全的
-      concurrency: env.CONCURRENCY_IMAGE_GLOBAL,
-      // 锁要盖住最长任务时长 + 余量,否则长任务会被误判 stalled
-      lockDuration: env.TASK_IMAGE_TIMEOUT_MS + 60_000,
-      stalledInterval: 30_000,
-      // 绝不自动重投:重投等于可能第二次调用付费接口
-      maxStalledCount: 0,
-    },
-  );
+  return new Worker<ImageGenerationJob>(QUEUE_NAMES.imageGeneration, (job, token) => handle(job, token), {
+    connection: queueConnection(),
+    prefix: env.QUEUE_PREFIX,
+    // 进程内取件上限。全局上限由 Redis 闸门保证,因此这里等于全局额度是安全的
+    concurrency: env.CONCURRENCY_IMAGE_GLOBAL,
+    // 锁要盖住最长任务时长 + 余量,否则长任务会被误判 stalled
+    lockDuration: env.TASK_IMAGE_TIMEOUT_MS + 60_000,
+    stalledInterval: 30_000,
+    // 绝不自动重投:重投等于可能第二次调用付费接口
+    maxStalledCount: 0,
+  });
 }
 
 async function handle(job: Job<ImageGenerationJob>, token?: string): Promise<void> {
@@ -124,7 +115,9 @@ async function handle(job: Job<ImageGenerationJob>, token?: string): Promise<voi
     }
 
     const bySeq = new Map(task.results.map((r) => [r.seq, r]));
-    const targetSeqs = (seqs.length > 0 ? seqs : task.results.map((r) => r.seq)).slice().sort((a, b) => a - b);
+    const targetSeqs = (seqs.length > 0 ? seqs : task.results.map((r) => r.seq))
+      .slice()
+      .sort((a, b) => a - b);
 
     // ---- 幂等:已成功的 seq 不重做 ----
     const pendingSeqs = targetSeqs.filter((seq) => bySeq.get(seq)?.status !== ResultStatus.SUCCEEDED);
@@ -267,6 +260,9 @@ async function handle(job: Job<ImageGenerationJob>, token?: string): Promise<voi
           attempt: job.data.attempt,
           providerTaskId: providerTaskIds.at(-1) ?? null,
         });
+        if (disposition.action === 'retry_later') {
+          throw new Error('任务整体超时必须产生终态,不能自动重试');
+        }
         await applyTerminalDisposition({
           reporter,
           taskId,
@@ -353,6 +349,9 @@ async function handle(job: Job<ImageGenerationJob>, token?: string): Promise<voi
             attempt: job.data.attempt,
             providerTaskId: outcome.providerTaskId,
           });
+          if (disposition.action === 'retry_later') {
+            throw new Error('轮询耗尽必须产生终态,不能自动重试');
+          }
           await applyTerminalDisposition({
             reporter,
             taskId,
@@ -411,12 +410,7 @@ async function handle(job: Job<ImageGenerationJob>, token?: string): Promise<voi
         const seq = chunk[i]!;
         const image = outcome.images[i];
         if (!image) {
-          await failResults(
-            taskId,
-            [seq],
-            ERROR_CODES.UPSTREAM_ERROR,
-            '上游返回的图片数量少于请求数量',
-          );
+          await failResults(taskId, [seq], ERROR_CODES.UPSTREAM_ERROR, '上游返回的图片数量少于请求数量');
           continue;
         }
         await persistImageResult({

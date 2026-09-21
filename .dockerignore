@@ -35,6 +35,7 @@ logs/
 **/*.log
 backups/
 tmp/
+**/tmp/
 .uploads-local/
 coverage/
 .nyc_output/

@@ -22,7 +22,7 @@ import { getPrisma } from './prisma';
 
 const log = createLogger('gate-reconcile');
 
-const IMAGE_TASK_TYPES = [TaskType.IMAGE_GENERATE, TaskType.IMAGE_EDIT];
+const IMAGE_TASK_TYPES: readonly TaskType[] = [TaskType.IMAGE_GENERATE, TaskType.IMAGE_EDIT];
 
 export interface ReconcileReport {
   imageGlobal: number;

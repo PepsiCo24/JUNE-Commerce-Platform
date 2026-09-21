@@ -110,7 +110,8 @@ export interface PublicUserProfile {
   avatarUrl: string | null;
   bio: string | null;
   location: string | null;
-  website: string | null;
+  phone: string | null;
+  wechatId: string | null;
   joinedAt: string;
   stats: {
     publishedPostCount: number;

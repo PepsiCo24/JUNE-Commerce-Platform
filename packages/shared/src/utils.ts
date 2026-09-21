@@ -78,6 +78,16 @@ export function maskSecret(secret: string): string {
   return `${secret.slice(0, 3)}****${secret.slice(-4)}`;
 }
 
+/**
+ * 平台账号 / 登录账号脱敏。空值保持 null,便于前端区分「未填写」。
+ */
+export function maskAccount(account: string | null | undefined): string | null {
+  if (account == null) return null;
+  const trimmed = account.trim();
+  if (!trimmed) return null;
+  return maskSecret(trimmed);
+}
+
 /** 固定长度的密码掩码,不泄漏真实长度 */
 export const PASSWORD_DISPLAY_MASK = '••••••••';
 

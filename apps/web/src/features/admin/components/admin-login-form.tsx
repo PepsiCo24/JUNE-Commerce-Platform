@@ -15,7 +15,7 @@ import { useAdminAuth } from '@/features/admin/providers/admin-auth-provider';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
 
-const ERROR_COPY: Record<string, string> = {
+const ERROR_COPY = {
   credentials: '邮箱或密码不正确',
   required: '请填写邮箱和密码',
   invalid: '提交内容无效,请重试',
@@ -36,12 +36,12 @@ export function AdminLoginForm(): React.JSX.Element {
   const redirectTo = sanitizeAdminRedirect(searchParams.get('redirect'));
   const queryError = useMemo(() => {
     const code = searchParams.get('error');
-    return code ? (ERROR_COPY[code] ?? '登录失败,请重试') : null;
+    return code ? (ERROR_COPY[code as keyof typeof ERROR_COPY] ?? '登录失败,请重试') : null;
   }, [searchParams]);
 
-  // 已有有效会话时直接进控制台
+  // 已有有效**管理员**会话时直接进控制台
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!isLoading && user?.isAdmin) {
       window.location.replace(redirectTo);
     }
   }, [isLoading, user, redirectTo]);
@@ -49,7 +49,13 @@ export function AdminLoginForm(): React.JSX.Element {
   return (
     <div className="w-full">
       <div className="mb-7 flex justify-center">
-        <BrandLogo variant="full" theme="dark" size="xl" className="h-auto w-[min(13rem,68vw)]" title={BRAND_FULL_NAME} />
+        <BrandLogo
+          variant="full"
+          theme="dark"
+          size="xl"
+          className="h-auto w-[min(13rem,68vw)]"
+          title={BRAND_FULL_NAME}
+        />
       </div>
 
       <div className="june-glass rounded-2xl p-6 sm:p-8">

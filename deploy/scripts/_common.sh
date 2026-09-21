@@ -95,7 +95,7 @@ require_env_value() {
 # 固定 -f 与 --project-directory,保证从任何目录调用行为一致。
 # JUNE_IMAGE_TAG / JUNE_IMAGE_PREFIX 由调用方导出,compose 负责插值。
 compose() {
-  docker compose --project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" "$@"
+  docker compose --env-file "$ENV_FILE" --project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" "$@"
 }
 
 # ---- 镜像 tag 状态(回滚需要知道"上一个成功的 tag")----
@@ -106,7 +106,20 @@ read_current_tag() { [ -f "$CURRENT_TAG_FILE" ] && cat "$CURRENT_TAG_FILE" || pr
 read_previous_tag() { [ -f "$PREVIOUS_TAG_FILE" ] && cat "$PREVIOUS_TAG_FILE" || printf ''; }
 
 record_tag() {
-  local new_tag="$1" cur
+  local new_tag="$1" cur temp_env image_prefix
+  image_prefix="${JUNE_IMAGE_PREFIX:-$(env_value JUNE_IMAGE_PREFIX)}"
+  image_prefix="${image_prefix:-june}"
+  # Also persist Compose's defaults: a later `docker compose up -d` must not
+  # silently replace the successful release with an old .env tag.
+  if [ -f "$ENV_FILE" ]; then
+    temp_env="$(mktemp "${ENV_FILE}.release.XXXXXX")"
+    cp -p "$ENV_FILE" "$temp_env"
+    awk -v tag="$new_tag" -v prefix="$image_prefix" '
+      !/^[[:space:]]*JUNE_IMAGE_(TAG|PREFIX)=/ { print }
+      END { print "JUNE_IMAGE_TAG=" tag; print "JUNE_IMAGE_PREFIX=" prefix }
+    ' "$ENV_FILE" > "$temp_env"
+    mv "$temp_env" "$ENV_FILE"
+  fi
   cur="$(read_current_tag)"
   if [ "$cur" != "$new_tag" ]; then
     printf '%s' "$cur" >"$PREVIOUS_TAG_FILE"

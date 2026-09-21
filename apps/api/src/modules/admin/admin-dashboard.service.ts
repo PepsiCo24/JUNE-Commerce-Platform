@@ -83,39 +83,34 @@ interface TaskBucketRow {
 
 /** 每个指标的统计口径。前端原样展示,避免"这个数到底怎么算的"这类争议。 */
 const DEFINITIONS = {
-  users: '未软删除(deletedAt IS NULL)的账号总数。全量口径,与所选区间无关',
-  newUsers: '统计区间内 users.createdAt 落在区间内的账号数(按 UTC 自然日对齐,含首尾两天),不含已软删除账号',
-  activeUsers:
-    '统计区间内 Session.lastSeenAt 落在区间内的会话所属用户去重数。' +
-    '同一用户多端登录只计一次;区间内完全没有发起请求的用户不计入。' +
-    '注意 lastSeenAt 为节流更新(每会话最多 5 分钟写一次),因此是"活跃用户"的下界估计',
-  shops: '未软删除的店铺总数,主店与子店合并计数(拆分见 breakdown.shopsMain / shopsSub)。全量口径',
-  products: '未软删除的商品总数。全量口径,与区间无关',
-  posts: '未软删除且状态不为 DELETED 的帖子总数(含草稿、已发布、已隐藏)。全量口径',
-  comments: '未软删除且状态为 VISIBLE 的评论数;被隐藏或删除的评论不计入。全量口径',
-  generationTasks: '统计区间内 GenerationTask.createdAt 落在区间内的任务数,含全部状态',
-  storageBytes:
-    'StorageUsage.bytesUsed 求和(字节,以字符串返回避免精度丢失)。只含已确认可用的资产,' +
-    '不含回收站内待清理的 recycledBytes(见 breakdown.storageRecycledBytes)',
-  shopsMain: '未软删除且 type = MAIN 的店铺数',
-  shopsSub: '未软删除且 type = SUB 的店铺数(挂接在主店下的子店)',
-  postsPublished: '未软删除且状态为 PUBLISHED 的帖子数',
-  postsDraft: '未软删除且状态为 DRAFT 的帖子数(仅作者可见)',
-  postsHidden: '未软删除且状态为 HIDDEN 的帖子数(被管理员隐藏)',
-  generationSucceeded: '统计区间内状态为 SUCCEEDED 的任务数',
-  generationPartial: '统计区间内状态为 PARTIAL(多图部分成功)的任务数',
-  generationFailed: '统计区间内状态为 FAILED 的任务数',
-  generationRateDenominator: '成功率分母:统计区间内 SUCCEEDED + PARTIAL + FAILED 的任务数',
-  storageRecycledBytes: 'StorageUsage.recycledBytes 求和:已删除但仍在回收期、依然占用对象存储的字节数',
+  users: '未软删除的账号总数（全站，与所选区间无关）',
+  newUsers: '所选区间内新注册账号数（不含已软删除）',
+  activeUsers: '所选区间内有过会话活跃的去重用户数（同一用户多端只计一次）',
+  shops: '未软删除的店铺总数（主店 + 子店）',
+  products: '未软删除的商品总数（全站，与区间无关）',
+  posts: '未软删除的帖子总数（含草稿、已发布、已隐藏）',
+  comments: '可见评论数（已隐藏或已删除的不计）',
+  generationTasks: '所选区间内创建的生成任务数（含全部状态）',
+  storageBytes: '已确认可用资产占用合计（不含回收站待清理部分）',
+  shopsMain: '主店数量',
+  shopsSub: '子店数量',
+  postsPublished: '已发布帖子数',
+  postsDraft: '草稿帖子数',
+  postsHidden: '被隐藏的帖子数',
+  generationSucceeded: '所选区间内成功任务数',
+  generationPartial: '所选区间内部分成功任务数',
+  generationFailed: '所选区间内失败任务数',
+  generationRateDenominator: '成功率分母：成功 + 部分成功 + 失败',
+  storageRecycledBytes: '回收站内仍占用对象存储的字节数',
 } as const;
 
 const TREND_DEFINITIONS = {
-  newUsers: '按桶统计 users.createdAt 落在该桶内的新增账号数(不含已软删除账号)',
-  activeUsers: '按桶统计 Session.lastSeenAt 落在该桶内的去重用户数;跨桶的同一用户会在每个活跃桶各计一次',
-  posts: '按桶统计 Post.createdAt 落在该桶内的新建帖子数(含草稿,不含已软删除)',
-  tasks: '按桶统计 GenerationTask.createdAt 落在该桶内的任务数,并按终态拆出 succeeded / failed',
-  successRate: `按桶计算的成功率(0~100)。${SUCCESS_RATE_DEFINITION}。该桶无可判定任务时为 0`,
-  storageBytes: '按桶统计 Asset.confirmedAt 落在该桶内的资产 byteSize 之和,即该桶新增的存储占用(字节)',
+  newUsers: '各时段的新注册用户数',
+  activeUsers: '各时段访问过平台的用户数',
+  posts: '各时段新建的社区帖子数',
+  tasks: '各时段创建的生成任务及其执行结果',
+  successRate: '完整成功任务占已判定结果任务的比例',
+  storageBytes: '各时段新增文件占用的空间',
 } as const;
 
 /**

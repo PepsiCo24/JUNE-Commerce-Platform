@@ -20,7 +20,8 @@ export function ProfileForm(): React.JSX.Element {
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
   const [location, setLocation] = useState(user?.location ?? '');
-  const [website, setWebsite] = useState(user?.website ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [wechatId, setWechatId] = useState(user?.wechatId ?? '');
 
   if (!user) return <p className="text-sm text-fg-muted">请先登录。</p>;
 
@@ -41,7 +42,8 @@ export function ProfileForm(): React.JSX.Element {
               displayName,
               bio: bio.trim() || null,
               location: location.trim() || null,
-              website: website.trim() || null,
+              phone: phone.trim() || null,
+              wechatId: wechatId.trim() || null,
             },
             action: async (input) => {
               const next = await api.patch<SessionUser>('/auth/profile', input);
@@ -74,13 +76,29 @@ export function ProfileForm(): React.JSX.Element {
             placeholder="可选"
           />
         </Field>
-        <Field label="个人网站" htmlFor="profile-website" error={form.fieldErrors.website}>
+        <Field label="手机号" htmlFor="profile-phone" error={form.fieldErrors.phone}>
           <Input
-            id="profile-website"
-            value={website}
-            onChange={(event) => setWebsite(event.target.value)}
-            placeholder="https://"
-            inputMode="url"
+            id="profile-phone"
+            value={phone}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              form.clearFieldError('phone');
+            }}
+            placeholder="可选,公开主页可见"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+        </Field>
+        <Field label="微信号" htmlFor="profile-wechat" error={form.fieldErrors.wechatId}>
+          <Input
+            id="profile-wechat"
+            value={wechatId}
+            onChange={(event) => {
+              setWechatId(event.target.value);
+              form.clearFieldError('wechatId');
+            }}
+            placeholder="可选,字母开头 6–20 位"
+            autoComplete="off"
           />
         </Field>
         <Field label="邮箱" htmlFor="profile-email">

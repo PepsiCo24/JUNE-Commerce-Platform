@@ -207,7 +207,15 @@ export class AuthService {
   async updateProfile(user: AuthUser, input: UpdateProfileInput, meta: ClientMeta): Promise<SessionUser> {
     const before = await this.prisma.db.user.findUniqueOrThrow({
       where: { id: user.id },
-      select: { displayName: true, bio: true, avatarKey: true, location: true, website: true, preferences: true },
+      select: {
+        displayName: true,
+        bio: true,
+        avatarKey: true,
+        location: true,
+        phone: true,
+        wechatId: true,
+        preferences: true,
+      },
     });
 
     let avatarKey = before.avatarKey;
@@ -244,7 +252,8 @@ export class AuthService {
         ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
         ...(input.bio !== undefined ? { bio: input.bio } : {}),
         ...(input.location !== undefined ? { location: input.location } : {}),
-        ...(input.website !== undefined ? { website: input.website || null } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone || null } : {}),
+        ...(input.wechatId !== undefined ? { wechatId: input.wechatId || null } : {}),
         ...(nextPreferences !== undefined ? { preferences: nextPreferences } : {}),
         avatarKey,
       },
@@ -259,7 +268,8 @@ export class AuthService {
         displayName: input.displayName,
         bio: input.bio,
         location: input.location,
-        website: input.website,
+        phone: input.phone,
+        wechatId: input.wechatId,
         theme: input.theme,
         avatarKey,
       }),
@@ -380,7 +390,8 @@ export class AuthService {
         avatarKey: true,
         bio: true,
         location: true,
-        website: true,
+        phone: true,
+        wechatId: true,
         preferences: true,
         status: true,
         createdAt: true,
@@ -400,7 +411,8 @@ export class AuthService {
       avatarUrl: user.avatarKey ? await this.assetUrls.signObjectKey(user.avatarKey) : null,
       bio: user.bio,
       location: user.location,
-      website: user.website,
+      phone: user.phone,
+      wechatId: user.wechatId,
       theme: prefs.theme,
       status: user.status,
       roles,

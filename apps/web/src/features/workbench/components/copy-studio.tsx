@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/feedback/states';
 import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CharCounter, Field, Input, Textarea } from '@/components/ui/input';
@@ -38,6 +39,10 @@ import { describeSubmitError, fieldErrorsFromApi, fieldErrorsFromZod } from '../
 import { InlineAlert } from './inline-alert';
 import { TaskStatusBar } from './task-status-bar';
 
+/**
+ * 文案生成:只保留提示词 / 模型 / 商品平台 / 生成。
+ * 风格等参数用默认值;保存与预检在结果区完成。
+ */
 export function CopyStudio(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -50,14 +55,8 @@ export function CopyStudio(): React.JSX.Element {
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const [productId, setProductId] = useState<string | null>(searchParams.get('product'));
-  const [productName, setProductName] = useState('');
-  const [productDetails, setProductDetails] = useState('');
-  const [sellingPointsText, setSellingPointsText] = useState('');
   const [targetPlatform, setTargetPlatform] = useState(String(TARGET_PLATFORMS[0]?.value ?? 'other'));
-  const [style, setStyle] = useState(String(COPY_STYLES[0]?.value ?? 'professional'));
   const [prompt, setPrompt] = useState('');
-  const [titleCount, setTitleCount] = useState(5);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -72,26 +71,17 @@ export function CopyStudio(): React.JSX.Element {
   const locked = resolved.locked;
   const noModels = (modelConfig.data?.textModels.length ?? 0) === 0;
   const unverified = Boolean(model && !model.limits.verified);
+  const defaultStyle = String(COPY_STYLES[0]?.value ?? 'professional');
 
   useDisabledModelGuard(model?.id ?? selectedModelId, () => {
     setSelectedModelId(null);
     setBlocked(true);
+    toast.error('所选模型已被停用,请重新选择');
   });
 
-  const sellingPoints = sellingPointsText
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
   const signature = JSON.stringify({
-    productId,
-    productName,
-    productDetails,
-    sellingPoints,
     targetPlatform,
-    style,
     prompt,
-    titleCount,
     model: locked ? null : selectedModelId,
   });
   const { key, reset } = useIdempotencyKey(signature);
@@ -113,24 +103,24 @@ export function CopyStudio(): React.JSX.Element {
     appliedTaskId.current = hydratedKey;
     setEditedTitle(resultText.titles[0] ?? '');
     setEditedBody(resultText.body);
-    setSaveProductId((prev) => prev ?? productId);
-  }, [hydratedKey, resultText, productId]);
+  }, [hydratedKey, resultText]);
 
   async function submit(): Promise<void> {
     if (noModels || !model) {
       toast.error('待真实联调：当前没有可用的文案模型');
       return;
     }
+    if (!prompt.trim()) {
+      setFieldErrors({ prompt: '请输入提示词' });
+      return;
+    }
 
     const body: CopyGenerateInput = {
-      productId,
-      productName: productName || undefined,
-      productDetails: productDetails || undefined,
-      sellingPoints,
       targetPlatform,
-      style,
-      prompt: prompt || undefined,
+      style: defaultStyle,
+      prompt: prompt.trim(),
       titleCount: 1,
+      sellingPoints: [],
       idempotencyKey: key,
     };
     if (!locked && model.id) body.modelConfigId = model.id;
@@ -154,12 +144,17 @@ export function CopyStudio(): React.JSX.Element {
     } catch (error) {
       if (isCode(error, ERROR_CODES.MODEL_SELECTION_LOCKED)) refreshModels();
       setFieldErrors(fieldErrorsFromApi(error));
-      toast.error(describeSubmitError(
-        error,
-        modelConfig.data
-          ? { running: modelConfig.data.concurrency.imagePerUserRunning, pending: modelConfig.data.concurrency.imagePerUserPending }
-          : undefined,
-      ));
+      toast.error(
+        describeSubmitError(
+          error,
+          modelConfig.data
+            ? {
+                running: modelConfig.data.concurrency.imagePerUserRunning,
+                pending: modelConfig.data.concurrency.imagePerUserPending,
+              }
+            : undefined,
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -223,108 +218,98 @@ export function CopyStudio(): React.JSX.Element {
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <section className="space-y-4">
         <PageHeader
           title="文案生成"
-          description="专注商品正文生成。标题请使用独立的「标题生成」功能。"
+          description="填写提示词,选择模型与商品平台后生成。"
+          className="min-w-0"
           actions={
-            <Button variant="ghost" size="sm" asChild>
+            <Button variant="ghost" size="sm" asChild className="shrink-0">
               <Link href="/workbench/copy/history">历史记录</Link>
             </Button>
           }
         />
 
+        {modelConfig.isError ? <ErrorState error={modelConfig.error} onRetry={() => void modelConfig.refetch()} /> : null}
+        {modelConfig.isPending ? <LoadingState message="加载模型配置" /> : null}
         {noModels ? (
-          <EmptyState title="待配置文案模型" description="当前没有可用的文案模型,无法提交。不会假装生成成功。" />
+          <EmptyState title="待配置文案模型" description="请在管理端配置并开放文案模型后使用。" />
         ) : null}
         {unverified ? (
           <InlineAlert tone="warning">当前模型尚未完成真实联调,请勿把结果当作已过审文案。</InlineAlert>
         ) : null}
-        {blocked ? (
-          <InlineAlert tone="danger">所选模型已被停用。请重新选择,系统不会自动切换供应商。</InlineAlert>
+        {blocked ? <InlineAlert tone="danger">所选模型已被停用,请重新选择。</InlineAlert> : null}
+
+        {!noModels && !modelConfig.isPending && !modelConfig.isError ? (
+          <>
+            <Field
+              label="提示词"
+              htmlFor="copy-prompt"
+              required
+              error={fieldErrors.prompt ?? fieldErrors.productName}
+              addon={<CharCounter value={prompt} max={PROMPT_MAX} />}
+            >
+              <Textarea
+                id="copy-prompt"
+                rows={5}
+                autoGrow
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                placeholder="描述商品、卖点、受众与文案要求"
+              />
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {locked && model ? (
+                <div className="flex items-end pb-2 text-sm text-fg-muted">
+                  模型 {model.displayName}
+                  {model.isMock ? (
+                    <Badge tone="warning" size="sm" className="ml-2">
+                      模拟
+                    </Badge>
+                  ) : null}
+                </div>
+              ) : (
+                <Field label="模型" htmlFor="copy-model">
+                  <Select
+                    id="copy-model"
+                    value={selectedModelId ?? model?.id ?? null}
+                    onChange={(value) => {
+                      setBlocked(false);
+                      setSelectedModelId(value);
+                    }}
+                    options={resolved.options.map((item) => ({
+                      value: item.id,
+                      label: `${item.displayName}${item.isMock ? ' · 模拟' : ''}`,
+                      description: item.limits.verified ? item.providerName : `${item.providerName} · 待真实联调`,
+                    }))}
+                    disabled={resolved.options.length <= 1}
+                  />
+                </Field>
+              )}
+
+              <Field label="商品平台" htmlFor="copy-platform">
+                <Select
+                  id="copy-platform"
+                  value={targetPlatform}
+                  onChange={setTargetPlatform}
+                  options={TARGET_PLATFORMS.map((item) => ({ value: item.value, label: item.label }))}
+                />
+              </Field>
+            </div>
+
+            <Button
+              fullWidth
+              loading={submitting}
+              disabled={noModels || !model || !prompt.trim()}
+              iconLeft={<PenLine size={16} />}
+              onClick={() => void submit()}
+            >
+              生成
+            </Button>
+          </>
         ) : null}
-
-        {locked && model ? (
-          <p className="text-sm text-fg-muted">
-            当前模型 {model.displayName}
-            {model.isMock ? ' · 模拟' : ''}
-          </p>
-        ) : null}
-
-        {!locked && resolved.options.length > 1 ? (
-          <Field label="模型" htmlFor="copy-model">
-            <Select
-              id="copy-model"
-              value={selectedModelId ?? model?.id ?? null}
-              onChange={(value) => {
-                setBlocked(false);
-                setSelectedModelId(value);
-              }}
-              options={resolved.options.map((item) => ({
-                value: item.id,
-                label: `${item.displayName}${item.isMock ? ' · 模拟' : ''}`,
-                description: item.limits.verified ? item.providerName : `${item.providerName} · 待真实联调`,
-              }))}
-            />
-          </Field>
-        ) : null}
-
-        <Field label="关联商品" htmlFor="copy-product" description="可选。选择后会带入商品资料。">
-          <Select
-            id="copy-product"
-            value={productId ?? '__none__'}
-            onChange={(value) => {
-              if (value === '__none__') {
-                setProductId(null);
-                return;
-              }
-              setProductId(value);
-              setSaveProductId(value);
-              const picked = products.data?.find((item) => item.id === value);
-              if (picked && !productName) setProductName(picked.name);
-            }}
-            options={[{ value: '__none__', label: '不选择,手工填写' }, ...productOptions]}
-          />
-        </Field>
-
-        <Field label="商品名称" htmlFor="copy-name" error={fieldErrors.productName}>
-          <Input id="copy-name" value={productName} onChange={(event) => setProductName(event.target.value)} />
-        </Field>
-        <Field label="商品资料" htmlFor="copy-details">
-          <Textarea id="copy-details" rows={4} autoGrow value={productDetails} onChange={(event) => setProductDetails(event.target.value)} />
-        </Field>
-        <Field label="卖点" htmlFor="copy-points" description="每行一条,最多 12 条">
-          <Textarea id="copy-points" rows={4} value={sellingPointsText} onChange={(event) => setSellingPointsText(event.target.value)} />
-        </Field>
-        <Field label="目标平台" htmlFor="copy-platform">
-          <Select
-            id="copy-platform"
-            value={targetPlatform}
-            onChange={setTargetPlatform}
-            options={TARGET_PLATFORMS.map((item) => ({ value: item.value, label: item.label }))}
-          />
-        </Field>
-        <Field label="风格" htmlFor="copy-style">
-          <Select
-            id="copy-style"
-            value={style}
-            onChange={setStyle}
-            options={COPY_STYLES.map((item) => ({ value: item.value, label: item.label }))}
-          />
-        </Field>
-        <Field label="附加提示词" htmlFor="copy-prompt" addon={<CharCounter value={prompt} max={PROMPT_MAX} />}>
-          <Textarea id="copy-prompt" rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-        </Field>
-        <Button
-          fullWidth
-          loading={submitting}
-          disabled={noModels || !model}
-          iconLeft={<PenLine size={16} />}
-          onClick={() => void submit()}
-        >
-          生成文案
-        </Button>
       </section>
 
       <section className="space-y-4 border-t border-border-default pt-6">

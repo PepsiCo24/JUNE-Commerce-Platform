@@ -18,7 +18,7 @@ export function GuestShell({ children }: { children: React.ReactNode }): React.J
       <header className="sticky top-0 z-50 border-b border-border-default bg-bg-elevated/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[90rem] items-center justify-between px-4 sm:px-6">
           <Link href="/login" aria-label={BRAND_FULL_NAME}>
-            <BrandLogo variant="horizontal" theme={theme} size="sm" title={BRAND_FULL_NAME} />
+            <BrandLogo variant="horizontal" theme={theme} size={36} title={BRAND_FULL_NAME} />
           </Link>
           <div className="flex items-center gap-2 text-sm sm:gap-3">
             <ThemeToggle />

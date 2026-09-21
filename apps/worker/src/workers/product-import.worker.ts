@@ -285,38 +285,58 @@ async function importBatch(params: {
       : [];
   const existingBySku = new Map(existing.filter((p) => p.sku).map((p) => [p.sku as string, p.id]));
 
-  await prisma.$transaction(async (tx) => {
-    for (const { rowNumber, value } of parsedRows) {
-      const duplicateId = value.sku ? existingBySku.get(value.sku) : undefined;
+  await prisma
+    .$transaction(async (tx) => {
+      for (const { rowNumber, value } of parsedRows) {
+        const duplicateId = value.sku ? existingBySku.get(value.sku) : undefined;
 
-      if (duplicateId) {
-        if (params.options.duplicateStrategy === 'skip') {
-          failed += 1;
-          errors.push({
-            row: rowNumber,
-            field: 'sku',
-            code: 'PRODUCT_SKU_DUPLICATE',
-            message: `SKU ${value.sku} 已存在,按"跳过"策略未导入`,
+        if (duplicateId) {
+          if (params.options.duplicateStrategy === 'skip') {
+            failed += 1;
+            errors.push({
+              row: rowNumber,
+              field: 'sku',
+              code: 'PRODUCT_SKU_DUPLICATE',
+              message: `SKU ${value.sku} 已存在,按"跳过"策略未导入`,
+            });
+            continue;
+          }
+          if (params.options.duplicateStrategy === 'fail') {
+            errors.push({
+              row: rowNumber,
+              field: 'sku',
+              code: 'PRODUCT_SKU_DUPLICATE',
+              message: `SKU ${value.sku} 已存在,按"失败"策略中止导入`,
+            });
+            failed += 1;
+            abortReason = `第 ${rowNumber} 行 SKU 重复,重复策略为"失败"故中止`;
+            // 抛出让本批事务回滚:重复策略为 fail 时不允许留下半批数据
+            throw new AbortBatch(abortReason);
+          }
+          // update
+          await tx.product.update({
+            where: { id: duplicateId },
+            data: {
+              name: value.name,
+              title: value.title,
+              description: value.description,
+              price: value.price,
+              currency: value.currency,
+              stock: value.stock,
+              status: value.status,
+              attributes: value.attributes as unknown as Prisma.InputJsonValue,
+            },
           });
+          success += 1;
           continue;
         }
-        if (params.options.duplicateStrategy === 'fail') {
-          errors.push({
-            row: rowNumber,
-            field: 'sku',
-            code: 'PRODUCT_SKU_DUPLICATE',
-            message: `SKU ${value.sku} 已存在,按"失败"策略中止导入`,
-          });
-          failed += 1;
-          abortReason = `第 ${rowNumber} 行 SKU 重复,重复策略为"失败"故中止`;
-          // 抛出让本批事务回滚:重复策略为 fail 时不允许留下半批数据
-          throw new AbortBatch(abortReason);
-        }
-        // update
-        await tx.product.update({
-          where: { id: duplicateId },
+
+        const created = await tx.product.create({
           data: {
+            ownerId: params.ownerId,
+            shopId: params.shopId,
             name: value.name,
+            sku: value.sku,
             title: value.title,
             description: value.description,
             price: value.price,
@@ -325,39 +345,21 @@ async function importBatch(params: {
             status: value.status,
             attributes: value.attributes as unknown as Prisma.InputJsonValue,
           },
+          select: { id: true, sku: true },
         });
+        // 同一批文件内部也可能出现重复 SKU,写入后立刻登记
+        if (created.sku) existingBySku.set(created.sku, created.id);
         success += 1;
-        continue;
       }
-
-      const created = await tx.product.create({
-        data: {
-          ownerId: params.ownerId,
-          shopId: params.shopId,
-          name: value.name,
-          sku: value.sku,
-          title: value.title,
-          description: value.description,
-          price: value.price,
-          currency: value.currency,
-          stock: value.stock,
-          status: value.status,
-          attributes: value.attributes as unknown as Prisma.InputJsonValue,
-        },
-        select: { id: true, sku: true },
-      });
-      // 同一批文件内部也可能出现重复 SKU,写入后立刻登记
-      if (created.sku) existingBySku.set(created.sku, created.id);
-      success += 1;
-    }
-  }).catch((err) => {
-    if (err instanceof AbortBatch) {
-      // 本批已回滚,成功计数要归零(数据库里没留下任何一行)
-      success = 0;
-      return;
-    }
-    throw err;
-  });
+    })
+    .catch((err) => {
+      if (err instanceof AbortBatch) {
+        // 本批已回滚,成功计数要归零(数据库里没留下任何一行)
+        success = 0;
+        return;
+      }
+      throw err;
+    });
 
   return { success, failed, errors, abortReason };
 }
@@ -386,8 +388,7 @@ interface ParsedProductRow {
 }
 
 type ParseResult =
-  | { ok: true; value: ParsedProductRow }
-  | { ok: false; field: string | null; code: string; message: string };
+  { ok: true; value: ParsedProductRow } | { ok: false; field: string | null; code: string; message: string };
 
 /** CSV 列名见 @june/shared 的 PRODUCT_CSV_COLUMNS */
 export function parseProductRow(raw: Record<string, string>): ParseResult {
@@ -409,7 +410,12 @@ export function parseProductRow(raw: Record<string, string>): ParseResult {
   if (priceRaw) {
     const numeric = Number(priceRaw.replace(/[,¥$\s]/g, ''));
     if (!Number.isFinite(numeric) || numeric < 0 || numeric > 99_999_999) {
-      return { ok: false, field: 'price', code: 'VALIDATION_FAILED', message: `价格 ${priceRaw} 不是合法金额` };
+      return {
+        ok: false,
+        field: 'price',
+        code: 'VALIDATION_FAILED',
+        message: `价格 ${priceRaw} 不是合法金额`,
+      };
     }
     // 金额用字符串交给 Prisma 的 Decimal,绝不经过浮点运算
     price = numeric.toFixed(2);
@@ -425,7 +431,12 @@ export function parseProductRow(raw: Record<string, string>): ParseResult {
   if (stockRaw) {
     const numeric = Number(stockRaw);
     if (!Number.isInteger(numeric) || numeric < 0 || numeric > 9_999_999) {
-      return { ok: false, field: 'stock', code: 'VALIDATION_FAILED', message: `库存 ${stockRaw} 不是合法整数` };
+      return {
+        ok: false,
+        field: 'stock',
+        code: 'VALIDATION_FAILED',
+        message: `库存 ${stockRaw} 不是合法整数`,
+      };
     }
     stock = numeric;
   }
@@ -551,7 +562,7 @@ export function resolveImportOptions(kind: string): ImportOptions {
 async function finishJob(importJobId: string, status: ImportStatus, message: string): Promise<void> {
   log.warn(`导入作业 ${importJobId} 终止:${message}`);
   await getPrisma()
-    .db.importJob.update({
+    .importJob.update({
       where: { id: importJobId },
       data: { status, errorMessage: message.slice(0, 1_000), finishedAt: new Date() },
     })

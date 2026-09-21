@@ -47,6 +47,8 @@ SEED_DEMO=true pnpm db:seed
 
 见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。镜像在开发机或 CI 构建,生产机不要现场编译。
 
+推送 `main` 后自动测试、构建镜像和更新服务器的配置见 [`docs/AUTO_DEPLOY.md`](docs/AUTO_DEPLOY.md)。首次接入服务器并启用 `DEPLOY_ENABLED` 后生效。
+
 ```bash
 ./deploy/scripts/build-images.sh
 ./deploy/scripts/deploy.sh

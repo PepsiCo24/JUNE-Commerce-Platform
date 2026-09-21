@@ -147,7 +147,6 @@ export function UserDetailScreen({ userId }: { userId: string }): React.JSX.Elem
                 <p key={item.id}>
                   {item.purpose} · {item.account}
                   {item.loginUrl ? ` · ${item.loginUrl}` : ''}
-                  {item.note ? ` · ${item.note}` : ''}
                 </p>
               ))}
         </div>

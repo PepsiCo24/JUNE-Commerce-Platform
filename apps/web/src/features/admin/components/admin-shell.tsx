@@ -50,7 +50,7 @@ function AdminChrome({ children }: { children: ReactNode }): React.JSX.Element {
           <Menu size={20} />
         </Button>
         <Link href="/admin" aria-label={BRAND_FULL_NAME}>
-          <BrandLogo variant="horizontal" theme="light" size="sm" />
+          <BrandLogo variant="horizontal" theme="light" size={36} />
         </Link>
         <span className="ml-auto truncate text-sm text-fg-muted">{activeItem?.label ?? '管理站'}</span>
       </div>
@@ -62,7 +62,7 @@ function AdminChrome({ children }: { children: ReactNode }): React.JSX.Element {
       <aside className="hidden w-60 shrink-0 border-r border-border-default bg-bg-elevated md:flex md:flex-col xl:w-64">
         <div className="border-b border-border-default px-4 py-5">
           <Link href="/admin" aria-label={BRAND_FULL_NAME} className="block">
-            <BrandLogo variant="horizontal" theme="light" size="sm" />
+            <BrandLogo variant="horizontal" theme="light" size={36} />
           </Link>
           <p className="mt-2 text-xs text-fg-subtle">管理站</p>
         </div>

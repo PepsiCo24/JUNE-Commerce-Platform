@@ -70,7 +70,9 @@ export async function downloadImage(url: string, maxBytes: number, signal?: Abor
 
   const declared = Number(res.headers.get('content-length') ?? 0);
   if (declared > maxBytes) {
-    throw new ResultTooLargeError(`生成结果 ${formatBytes(declared)} 超过单文件上限 ${formatBytes(maxBytes)}`);
+    throw new ResultTooLargeError(
+      `生成结果 ${formatBytes(declared)} 超过单文件上限 ${formatBytes(maxBytes)}`,
+    );
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -139,7 +141,7 @@ export async function storeGeneratedImage(params: {
     width = metadata.width ?? null;
     height = metadata.height ?? null;
     if (metadata.format) {
-      const detected = metadata.format === 'jpg' ? 'jpeg' : metadata.format;
+      const detected = metadata.format;
       mimeType = `image/${detected}`;
     }
   } catch (err) {

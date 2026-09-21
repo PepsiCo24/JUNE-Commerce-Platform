@@ -4,6 +4,7 @@ build/
 .next/
 out/
 *.tsbuildinfo
+__pycache__/
 .turbo/
 
 # Prisma 7 将客户端生成到源码树,不入库
@@ -26,6 +27,10 @@ loadtest/results/
 backups/
 tmp/
 .uploads-local/
+deploy/.state/
+deploy/images/
+deploy/nginx/certs/
+deploy/nginx/acme/
 
 # 编辑器 / 系统
 .DS_Store

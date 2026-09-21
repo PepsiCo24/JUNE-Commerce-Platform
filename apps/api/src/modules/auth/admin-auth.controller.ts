@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { SessionScope } from '@june/db';
+import { ROLE_ADMIN, ROLE_LEVEL, SessionScope } from '@june/db';
 import { adminLoginSchema, type AuthStateResponse, type SessionUser } from '@june/shared';
 import type { Response } from 'express';
 import type { z } from 'zod';
@@ -25,7 +25,8 @@ const authThrottle = {
  *  - 使用独立 Cookie(june_admin_session)与 SessionScope.ADMIN,路径限定 /api/admin;
  *  - 登录时在后端校验管理员角色,非管理员返回与密码错误相同的错误码,
  *    避免通过该入口探测哪些账号是管理员;
- *  - 普通站点会话无法访问 /api/admin/**,反之亦然。
+ *  - 普通站点会话无法访问 /api/admin/**,反之亦然;
+ *  - /me 会再次校验管理员等级,降权后遗留会话会被清掉。
  */
 @Controller('admin/auth')
 export class AdminAuthController {
@@ -56,6 +57,12 @@ export class AdminAuthController {
     const user = req.authUser;
     const sessionToken = req.authSession?.token;
     if (!user || !sessionToken) return { user: null, csrfToken: null };
+
+    // 降权 / 异常 ADMIN 会话:清 Cookie,绝不把非管理员放进管理站
+    if (!user.isAdmin || user.roleLevel < ROLE_LEVEL[ROLE_ADMIN]) {
+      await this.auth.logout(sessionToken, SessionScope.ADMIN, res);
+      return { user: null, csrfToken: null };
+    }
 
     // 每次 /me 刷新管理站 CSRF,自愈「站点 CSRF 覆盖」或部署后 Cookie 名变更
     const csrfToken = this.sessions.refreshCsrfCookie({

@@ -88,7 +88,7 @@ export interface AdminShopDetailView {
   childCount: number;
   createdAt: string;
   updatedAt: string;
-  /** 凭据条目:只有用途/账号/登录地址/备注,永不含密码 */
+  /** 凭据条目:用途/脱敏账号/登录地址;备注与密码永不返回 */
   credentials: AdminShopCredentialView[];
 }
 

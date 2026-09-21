@@ -15,7 +15,7 @@
  *  5. **不做提前流式展示**:SSE 事件只带状态与阶段,任何时候都不携带正文,
  *     因此用户不可能看到未通过检查的内容。
  */
-import { ResultStatus, TaskStatus, TaskType } from '@june/db';
+import { Prisma, ResultStatus, TaskStatus, TaskType } from '@june/db';
 import {
   CONTENT_CHECK_DISCLAIMER,
   ERROR_CODES,
@@ -110,19 +110,15 @@ const COPY_JSON_SCHEMA: Record<string, unknown> = {
 
 export function createTextGenerationWorker(): Worker<TextGenerationJob> {
   const env = loadEnv();
-  return new Worker<TextGenerationJob>(
-    QUEUE_NAMES.textGeneration,
-    (job, token) => handle(job, token),
-    {
-      connection: queueConnection(),
-      prefix: env.QUEUE_PREFIX,
-      concurrency: env.CONCURRENCY_TEXT_GLOBAL,
-      lockDuration: env.TASK_TEXT_TIMEOUT_MS + 60_000,
-      stalledInterval: 30_000,
-      // 与生图同理:stalled 不重投,避免重复调用付费接口
-      maxStalledCount: 0,
-    },
-  );
+  return new Worker<TextGenerationJob>(QUEUE_NAMES.textGeneration, (job, token) => handle(job, token), {
+    connection: queueConnection(),
+    prefix: env.QUEUE_PREFIX,
+    concurrency: env.CONCURRENCY_TEXT_GLOBAL,
+    lockDuration: env.TASK_TEXT_TIMEOUT_MS + 60_000,
+    stalledInterval: 30_000,
+    // 与生图同理:stalled 不重投,避免重复调用付费接口
+    maxStalledCount: 0,
+  });
 }
 
 async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void> {
@@ -276,10 +272,24 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
           attempt: job.data.attempt,
         });
         if (disposition.action === 'mark_unknown') {
-          await markUnknown(reporter, disposition.errorCode, disposition.message, providerCallCount, queueWaitMs);
+          await markUnknown(
+            reporter,
+            disposition.errorCode,
+            disposition.message,
+            providerCallCount,
+            queueWaitMs,
+          );
         } else if (disposition.action === 'fail') {
           await failResult(taskId, disposition.errorCode, disposition.message);
-          await failTask(reporter, taskId, disposition.errorCode, disposition.message, queueWaitMs, true, disposition.taskStatus);
+          await failTask(
+            reporter,
+            taskId,
+            disposition.errorCode,
+            disposition.message,
+            queueWaitMs,
+            true,
+            disposition.taskStatus,
+          );
         }
         recordFailed(job.queueName);
         return;
@@ -325,7 +335,13 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
           throw await deferJob(job, token, `上游限流(${disposition.errorCode})`, disposition.delayMs);
         }
         if (disposition.action === 'mark_unknown') {
-          await markUnknown(reporter, disposition.errorCode, disposition.message, providerCallCount, queueWaitMs);
+          await markUnknown(
+            reporter,
+            disposition.errorCode,
+            disposition.message,
+            providerCallCount,
+            queueWaitMs,
+          );
           recordFailed(job.queueName);
           return;
         }
@@ -383,7 +399,14 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
             continue;
           }
           await failResult(taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题数量不符合要求');
-          await failTask(reporter, taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题数量不符合要求', queueWaitMs, true);
+          await failTask(
+            reporter,
+            taskId,
+            ERROR_CODES.CONTENT_STRUCTURE_INVALID,
+            '标题数量不符合要求',
+            queueWaitMs,
+            true,
+          );
           recordFailed(job.queueName);
           return;
         }
@@ -395,7 +418,14 @@ async function handle(job: Job<TextGenerationJob>, token?: string): Promise<void
             continue;
           }
           await failResult(taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题长度超出限制');
-          await failTask(reporter, taskId, ERROR_CODES.CONTENT_STRUCTURE_INVALID, '标题长度超出限制', queueWaitMs, true);
+          await failTask(
+            reporter,
+            taskId,
+            ERROR_CODES.CONTENT_STRUCTURE_INVALID,
+            '标题长度超出限制',
+            queueWaitMs,
+            true,
+          );
           recordFailed(job.queueName);
           return;
         }
@@ -674,7 +704,7 @@ async function blockResult(taskId: string, check: ContentCheckOutcome): Promise<
       taskId,
       seq: 0,
       status: ResultStatus.FAILED,
-      textPayload: null,
+      textPayload: Prisma.DbNull,
       checkResult: summary,
       errorCode: ERROR_CODES.CONTENT_BLOCKED_OUTPUT,
       errorMessage: '生成结果未通过内容检查,已拦截',
@@ -683,7 +713,7 @@ async function blockResult(taskId: string, check: ContentCheckOutcome): Promise<
     update: {
       status: ResultStatus.FAILED,
       // 显式写 null:即使这条结果之前存过内容,被拦截后也不允许再展示
-      textPayload: null,
+      textPayload: Prisma.DbNull,
       checkResult: summary,
       errorCode: ERROR_CODES.CONTENT_BLOCKED_OUTPUT,
       errorMessage: '生成结果未通过内容检查,已拦截',

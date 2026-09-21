@@ -9,11 +9,13 @@ import { NextResponse, type NextRequest } from 'next/server';
  *     也无法判断 Cookie 是否过期、是否被前移的 sessionEpoch 作废、账号是否被禁用。
  *  2. 因此伪造一个同名 Cookie 就能"骗过"这里 —— 但那只能骗到一次页面渲染,
  *     **拿不到任何数据**:真正的鉴权在后端每个接口里做(会话校验 + RolesGuard + 归属校验),
- *     `(app)/layout.tsx` 还会用 `serverGet('/auth/me')` 做一次真实的服务端校验。
+ *     `(admin)/layout.tsx` 还会拒绝「已登录的非管理员站点用户」直达 /admin。
  *  3. 它存在的唯一理由是:让未登录用户在请求页面之前就被弹回登录页,
  *     省掉一次 RSC 渲染与一次 /auth/me 往返,也避免登录页闪烁。
  *
- * 换句话说:删掉这个文件,系统依然是安全的,只是体验会变差。
+ * 管理站与站点会话完全隔离:
+ *  - 站点 Cookie(june_session)不能进入 /admin 控制台;
+ *  - 管理站 Cookie(june_admin_session)不能调用站点写接口。
  */
 
 /** 未登录也必须可访问的公开路径前缀:已发布帖子的公开链接与分享短链。 */

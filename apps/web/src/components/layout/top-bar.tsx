@@ -42,7 +42,7 @@ export function TopBar({
 
         <Link href="/" className="flex shrink-0 items-center rounded-md" aria-label="返回首页">
           {/* Logo 的深浅版本跟随场景;所有标识只能来自 BrandLogo */}
-          <BrandLogo variant="horizontal" theme={theme} size="sm" title="返回首页" />
+          <BrandLogo variant="horizontal" theme={theme} size={36} title="返回首页" />
         </Link>
 
         <nav aria-label="主导航" className="ml-2 hidden shrink-0 items-center gap-1 md:flex">

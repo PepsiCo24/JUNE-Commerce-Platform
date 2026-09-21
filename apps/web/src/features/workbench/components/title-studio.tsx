@@ -4,14 +4,12 @@ import {
   ERROR_CODES,
   PROMPT_MAX,
   TARGET_PLATFORMS,
-  TITLE_COUNT_MAX,
-  TITLE_LENGTH_MAX,
   titleGenerateSchema,
   type TaskSubmitResponse,
   type TitleGenerateInput,
   type TitleSaveResponse,
 } from '@june/shared';
-import { Copy, RefreshCw, Save } from 'lucide-react';
+import { Copy, PenLine, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +17,7 @@ import { toast } from 'sonner';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/feedback/states';
 import { PageHeader } from '@/components/layout/page-header';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CharCounter, Field, Input, Textarea } from '@/components/ui/input';
@@ -28,7 +27,7 @@ import { copyToClipboard } from '@/lib/utils';
 
 import { useIdempotencyKey } from '../hooks/use-idempotency-key';
 import { resolveActiveModel, useDisabledModelGuard, useModelConfig, useRefreshModelConfig } from '../hooks/use-model-config';
-import { useProductOptions, useShopOptions } from '../hooks/use-options';
+import { useProductOptions } from '../hooks/use-options';
 import { isTerminalStatus, useTaskDetail } from '../hooks/use-task-detail';
 import { isCode } from '../lib/error-copy';
 import { describeSubmitError, fieldErrorsFromApi, fieldErrorsFromZod } from '../lib/form';
@@ -36,6 +35,10 @@ import { describeSubmitError, fieldErrorsFromApi, fieldErrorsFromZod } from '../
 import { InlineAlert } from './inline-alert';
 import { TaskStatusBar } from './task-status-bar';
 
+/**
+ * 标题生成:只保留提示词 / 模型 / 商品平台 / 生成。
+ * 候选数量与字数上限用默认值;保存到商品在结果区完成。
+ */
 export function TitleStudio(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,19 +47,12 @@ export function TitleStudio(): React.JSX.Element {
   const modelConfig = useModelConfig();
   const refreshModels = useRefreshModelConfig();
   const { query: taskQuery, degraded } = useTaskDetail(taskId);
-  const shops = useShopOptions();
+  const products = useProductOptions();
 
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const [shopId, setShopId] = useState<string | null>(null);
-  const [productId, setProductId] = useState<string | null>(searchParams.get('product'));
-  const [productName, setProductName] = useState('');
-  const [sellingPointsText, setSellingPointsText] = useState('');
-  const [keywordsText, setKeywordsText] = useState('');
   const [targetPlatform, setTargetPlatform] = useState(String(TARGET_PLATFORMS[0]?.value ?? 'other'));
   const [prompt, setPrompt] = useState('');
-  const [titleCount, setTitleCount] = useState(5);
-  const [maxTitleLength, setMaxTitleLength] = useState(60);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,7 +60,6 @@ export function TitleStudio(): React.JSX.Element {
   const [saveProductId, setSaveProductId] = useState<string | null>(null);
   const resultsRef = useRef<HTMLElement>(null);
 
-  const products = useProductOptions('', shopId);
   const resolved = resolveActiveModel(modelConfig.data, 'title', selectedModelId);
   const model = blocked ? null : resolved.model;
   const locked = resolved.locked;
@@ -74,21 +69,12 @@ export function TitleStudio(): React.JSX.Element {
   useDisabledModelGuard(model?.id ?? selectedModelId, () => {
     setSelectedModelId(null);
     setBlocked(true);
+    toast.error('所选模型已被停用,请重新选择');
   });
 
-  const sellingPoints = sellingPointsText.split('\n').map((l) => l.trim()).filter(Boolean);
-  const keywords = keywordsText.split(/[,，、\n]/).map((l) => l.trim()).filter(Boolean);
-
   const signature = JSON.stringify({
-    shopId,
-    productId,
-    productName,
-    sellingPoints,
-    keywords,
     targetPlatform,
     prompt,
-    titleCount,
-    maxTitleLength,
     model: locked ? null : selectedModelId,
   });
   const { key, reset } = useIdempotencyKey(signature);
@@ -105,8 +91,7 @@ export function TitleStudio(): React.JSX.Element {
     if (!titleResult || !hydratedKey || appliedTaskId.current === hydratedKey) return;
     appliedTaskId.current = hydratedKey;
     setEditedTitles(titleResult.titles.map((t) => t.text));
-    setSaveProductId((prev) => prev ?? productId);
-  }, [hydratedKey, titleResult, productId]);
+  }, [hydratedKey, titleResult]);
 
   useEffect(() => {
     if (submitting || !taskId) return;
@@ -120,16 +105,18 @@ export function TitleStudio(): React.JSX.Element {
       toast.error('待真实联调：当前没有可用的标题模型');
       return;
     }
+    if (!prompt.trim()) {
+      setFieldErrors({ prompt: '请输入提示词' });
+      return;
+    }
 
     const body: TitleGenerateInput = {
-      productId,
-      productName: productName || undefined,
-      sellingPoints,
-      keywords,
       targetPlatform,
-      prompt: prompt || undefined,
-      titleCount,
-      maxTitleLength,
+      prompt: prompt.trim(),
+      titleCount: 5,
+      maxTitleLength: 60,
+      sellingPoints: [],
+      keywords: [],
       idempotencyKey: key,
     };
     if (!locked && model.id) body.modelConfigId = model.id;
@@ -187,139 +174,103 @@ export function TitleStudio(): React.JSX.Element {
     }
   }
 
-  const shopOptions = (shops.data ?? []).map((s) => ({ value: s.id, label: s.name }));
   const productOptions = (products.data ?? []).map((item) => ({
     value: item.id,
     label: item.sku ? `${item.name} (${item.sku})` : item.name,
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
-      <PageHeader
-        title="标题生成"
-        description="输入商品资料与平台要求,生成候选标题。可编辑、复制并保存到商品。"
-        actions={
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/workbench/title/history">历史记录</Link>
-          </Button>
-        }
-      />
-
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
       <section className="space-y-4">
+        <PageHeader
+          title="标题生成"
+          description="填写提示词,选择模型与商品平台后生成。"
+          className="min-w-0"
+          actions={
+            <Button variant="ghost" size="sm" asChild className="shrink-0">
+              <Link href="/workbench/title/history">历史记录</Link>
+            </Button>
+          }
+        />
+
         {modelConfig.isError ? <ErrorState error={modelConfig.error} onRetry={() => void modelConfig.refetch()} /> : null}
+        {modelConfig.isPending ? <LoadingState message="加载模型配置" /> : null}
         {noModels ? (
-          <EmptyState title="待配置标题模型" description="当前没有可用的文本模型,无法提交。不会假装生成成功。" />
+          <EmptyState title="待配置标题模型" description="请在管理端配置并开放标题模型后使用。" />
         ) : null}
         {unverified ? <InlineAlert tone="warning">当前模型尚未完成真实联调,结果仅供验证。</InlineAlert> : null}
+        {blocked ? <InlineAlert tone="danger">所选模型已被停用,请重新选择。</InlineAlert> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="店铺" htmlFor="title-shop">
-            <Select
-              id="title-shop"
-              value={shopId ?? '__none__'}
-              onChange={(value) => {
-                setShopId(value === '__none__' ? null : value);
-                setProductId(null);
-              }}
-              options={[{ value: '__none__', label: '不关联店铺' }, ...shopOptions]}
-            />
-          </Field>
-          <Field label="商品" htmlFor="title-product" description="先选店铺再搜索商品">
-            <Select
-              id="title-product"
-              value={productId ?? '__none__'}
-              onChange={(value) => {
-                if (value === '__none__') {
-                  setProductId(null);
-                  return;
-                }
-                setProductId(value);
-                const picked = products.data?.find((p) => p.id === value);
-                if (picked) setProductName(picked.name);
-              }}
-              options={[{ value: '__none__', label: shopId ? '搜索并选择商品' : '请先选择店铺' }, ...productOptions]}
-              disabled={!shopId}
-            />
-          </Field>
-        </div>
-
-        <Field label="商品名称" htmlFor="title-name" error={fieldErrors.productName}>
-          <Input id="title-name" value={productName} onChange={(e) => setProductName(e.target.value)} />
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="目标平台" htmlFor="title-platform">
-            <Select
-              id="title-platform"
-              value={targetPlatform}
-              onChange={setTargetPlatform}
-              options={TARGET_PLATFORMS.map((p) => ({ value: p.value, label: p.label }))}
-            />
-          </Field>
-          {!locked && resolved.options.length > 1 ? (
-            <Field label="模型" htmlFor="title-model">
-              <Select
-                id="title-model"
-                value={selectedModelId ?? model?.id ?? null}
-                onChange={(value) => {
-                  setBlocked(false);
-                  setSelectedModelId(value);
-                }}
-                options={resolved.options.map((item) => ({
-                  value: item.id,
-                  label: `${item.displayName}${item.isMock ? ' · 模拟' : ''}`,
-                }))}
+        {!noModels && !modelConfig.isPending && !modelConfig.isError ? (
+          <>
+            <Field
+              label="提示词"
+              htmlFor="title-prompt"
+              required
+              error={fieldErrors.prompt ?? fieldErrors.productName}
+              addon={<CharCounter value={prompt} max={PROMPT_MAX} />}
+            >
+              <Textarea
+                id="title-prompt"
+                rows={5}
+                autoGrow
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                maxLength={PROMPT_MAX}
+                placeholder="描述商品名称、卖点、风格与关键词要求"
               />
             </Field>
-          ) : null}
-        </div>
 
-        <Field label="卖点(每行一条)" htmlFor="title-points">
-          <Textarea id="title-points" rows={3} value={sellingPointsText} onChange={(e) => setSellingPointsText(e.target.value)} />
-        </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {locked && model ? (
+                <div className="flex items-end pb-2 text-sm text-fg-muted">
+                  模型 {model.displayName}
+                  {model.isMock ? (
+                    <Badge tone="warning" size="sm" className="ml-2">
+                      模拟
+                    </Badge>
+                  ) : null}
+                </div>
+              ) : (
+                <Field label="模型" htmlFor="title-model">
+                  <Select
+                    id="title-model"
+                    value={selectedModelId ?? model?.id ?? null}
+                    onChange={(value) => {
+                      setBlocked(false);
+                      setSelectedModelId(value);
+                    }}
+                    options={resolved.options.map((item) => ({
+                      value: item.id,
+                      label: `${item.displayName}${item.isMock ? ' · 模拟' : ''}`,
+                      description: `${item.providerName}${item.limits.verified ? '' : ' · 待真实联调'}`,
+                    }))}
+                    disabled={resolved.options.length <= 1}
+                  />
+                </Field>
+              )}
 
-        <Field label="关键词" htmlFor="title-keywords" description="逗号或换行分隔">
-          <Input id="title-keywords" value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} />
-        </Field>
+              <Field label="商品平台" htmlFor="title-platform">
+                <Select
+                  id="title-platform"
+                  value={targetPlatform}
+                  onChange={setTargetPlatform}
+                  options={TARGET_PLATFORMS.map((p) => ({ value: p.value, label: p.label }))}
+                />
+              </Field>
+            </div>
 
-        <Field label="补充要求" htmlFor="title-prompt">
-          <Textarea id="title-prompt" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={PROMPT_MAX} />
-          <CharCounter value={prompt} max={PROMPT_MAX} />
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="候选数量" htmlFor="title-count">
-            <Input
-              id="title-count"
-              type="number"
-              min={1}
-              max={TITLE_COUNT_MAX}
-              value={titleCount}
-              onChange={(e) => setTitleCount(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="单条字数上限" htmlFor="title-max-len">
-            <Input
-              id="title-max-len"
-              type="number"
-              min={8}
-              max={TITLE_LENGTH_MAX}
-              value={maxTitleLength}
-              onChange={(e) => setMaxTitleLength(Number(e.target.value))}
-            />
-          </Field>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button loading={submitting} onClick={() => void submit()} disabled={noModels || !model}>
-            生成标题
-          </Button>
-          {taskId ? (
-            <Button variant="secondary" iconLeft={<RefreshCw size={16} />} onClick={() => void submit()} disabled={submitting}>
-              重新生成
+            <Button
+              fullWidth
+              loading={submitting}
+              onClick={() => void submit()}
+              disabled={noModels || !model || !prompt.trim()}
+              iconLeft={<PenLine size={16} />}
+            >
+              生成
             </Button>
-          ) : null}
-        </div>
+          </>
+        ) : null}
       </section>
 
       {taskId ? (

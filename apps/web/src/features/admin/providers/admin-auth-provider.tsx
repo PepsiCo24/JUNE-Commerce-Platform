@@ -14,9 +14,9 @@ import { ADMIN_PATHS } from '@/features/admin/api/paths';
  *  - 探测的是 `/admin/auth/me`,不是 `/auth/me`;
  *  - Cookie 是 `june_admin_session`,站点会话无法进入 /admin;
  *  - CSRF 使用独立 Cookie `june_admin_csrf`,写请求由 `adminApi` 从该 Cookie 回填。
- *    打开管理站时 `/admin/auth/me` 会刷新该 Cookie,无需额外登录即可自愈。
+ *  - 探测到会话但 `!isAdmin` 时立即清会话并跳登录(防降权残留)。
  *
- * 权限判断的最终依据仍在后端;这里只决定界面显示什么。
+ * 权限判断的最终依据仍在后端;这里决定界面是否放行。
  */
 
 interface AdminAuthContextValue {
@@ -31,6 +31,10 @@ const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
 const LOGIN_PATH = '/admin/login';
 
+function isAdminUser(user: SessionUser | null | undefined): user is SessionUser {
+  return Boolean(user?.isAdmin);
+}
+
 export function AdminAuthProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const router = useRouter();
   const pathname = usePathname();
@@ -41,8 +45,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }): React.
   const fetchMe = useCallback(async (): Promise<SessionUser | null> => {
     try {
       const state = await adminApi.get<AuthStateResponse>(ADMIN_PATHS.auth.me, { silentUnauthorized: true });
-      setUser(state.user);
-      return state.user;
+      const next = isAdminUser(state.user) ? state.user : null;
+      // 后端已拒绝非管理员;此处再挡一层,避免异常 payload 进入 UI
+      if (state.user && !next) {
+        try {
+          await adminApi.post(ADMIN_PATHS.auth.logout);
+        } catch {
+          // ignore
+        }
+      }
+      setUser(next);
+      return next;
     } catch {
       setUser(null);
       return null;
@@ -73,7 +86,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }): React.
   useEffect(() => {
     if (isLoading) return;
     if (pathname === LOGIN_PATH) return;
-    if (user) return;
+    if (isAdminUser(user)) return;
     if (redirectingRef.current) return;
     redirectingRef.current = true;
     const current = `${window.location.pathname}${window.location.search}`;
@@ -81,11 +94,20 @@ export function AdminAuthProvider({ children }: { children: ReactNode }): React.
     window.location.replace(`${LOGIN_PATH}?redirect=${encodeURIComponent(current)}`);
   }, [isLoading, pathname, user]);
 
+  // 登录页若带着无效/非管理员会话残留,清掉并留在登录表单
+  useEffect(() => {
+    if (isLoading) return;
+    if (pathname !== LOGIN_PATH) return;
+    if (user && !isAdminUser(user)) {
+      setUser(null);
+    }
+  }, [isLoading, pathname, user]);
+
   const value = useMemo<AdminAuthContextValue>(
     () => ({
-      user,
+      user: isAdminUser(user) ? user : null,
       isLoading,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: isAdminUser(user),
       refresh: fetchMe,
       logout,
     }),

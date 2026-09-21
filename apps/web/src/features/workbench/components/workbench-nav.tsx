@@ -56,7 +56,7 @@ export function WorkbenchNav(): React.JSX.Element {
       <aside className="hidden w-60 shrink-0 border-r border-border-default px-4 py-6 md:block xl:w-64">
         <div className="mb-6 px-2">
           <Link href="/workbench/image" aria-label="JUNE 工作台">
-            <BrandLogo variant="horizontal" theme="dark" size="sm" />
+            <BrandLogo variant="horizontal" theme="dark" size={36} />
           </Link>
         </div>
         <NavList active={active} />
